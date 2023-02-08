@@ -74,17 +74,17 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`
 
 func getPolicies(permission *Permission) [][]string {
 	var policies [][]string
-	permissionId := permission.Owner + "/" + permission.Name
+	//permissionId := permission.Owner + "/" + permission.Name
 	domainExist := len(permission.Domains) > 0
 	for _, user := range permission.Users {
 		for _, resource := range permission.Resources {
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
-						policies = append(policies, []string{user, domain, resource, strings.ToLower(action), "", permissionId})
+						policies = append(policies, []string{user, domain, resource, strings.ToLower(action)})
 					}
 				} else {
-					policies = append(policies, []string{user, resource, strings.ToLower(action), "", "", permissionId})
+					policies = append(policies, []string{user, resource, strings.ToLower(action)})
 				}
 			}
 		}
@@ -94,10 +94,10 @@ func getPolicies(permission *Permission) [][]string {
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
-						policies = append(policies, []string{role, domain, resource, strings.ToLower(action), "", permissionId})
+						policies = append(policies, []string{role, domain, resource, strings.ToLower(action)})
 					}
 				} else {
-					policies = append(policies, []string{role, resource, strings.ToLower(action), "", "", permissionId})
+					policies = append(policies, []string{role, resource, strings.ToLower(action)})
 				}
 			}
 		}
@@ -275,7 +275,7 @@ func getGroupingPoliciesByPermissions(column []string, role *Role, permissions [
 func getPoliciesByPermissions(column []string, permissions []*Permission) map[string][][]string {
 	var policies = make(map[string][][]string, len(permissions))
 	for _, p := range permissions {
-		permissionId := p.Owner + "/" + p.Name
+		//permissionId := p.Owner + "/" + p.Name
 		domainExist := len(p.Domains) > 0
 		key := p.Adapter + "/" + strings.Join(p.Domains, ",")
 		//if _, ok := policies[key]; ok {
@@ -286,10 +286,10 @@ func getPoliciesByPermissions(column []string, permissions []*Permission) map[st
 				for _, action := range p.Actions {
 					if domainExist {
 						for _, domain := range p.Domains {
-							policies[key] = append(policies[key], []string{v, domain, resource, strings.ToLower(action), "", permissionId})
+							policies[key] = append(policies[key], []string{v, domain, resource, strings.ToLower(action)})
 						}
 					} else {
-						policies[key] = append(policies[key], []string{v, resource, strings.ToLower(action), "", "", permissionId})
+						policies[key] = append(policies[key], []string{v, resource, strings.ToLower(action)})
 					}
 				}
 			}

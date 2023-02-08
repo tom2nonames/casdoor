@@ -592,7 +592,7 @@ func operateGroupingPoliciesByPermission(permission *Permission, enforcer *casbi
 
 func operatePoliciesByPermission(permission *Permission, enforcer *casbin.Enforcer, isAdd bool, isUser bool) {
 	var err error
-	permissionId := permission.Owner + "/" + permission.Name
+	//permissionId := permission.Owner + "/" + permission.Name
 	column := permission.Roles
 	if isUser {
 		column = permission.Users
@@ -604,9 +604,9 @@ func operatePoliciesByPermission(permission *Permission, enforcer *casbin.Enforc
 				if domainExist {
 					for _, domain := range permission.Domains {
 						if isAdd {
-							_, err = enforcer.AddNamedPolicy("p", v, domain, resource, strings.ToLower(action), "", permissionId)
+							_, err = enforcer.AddNamedPolicy("p", v, domain, resource, strings.ToLower(action))
 						} else {
-							_, err = enforcer.RemoveNamedPolicy("p", v, domain, resource, strings.ToLower(action), "", permissionId)
+							_, err = enforcer.RemoveNamedPolicy("p", v, domain, resource, strings.ToLower(action))
 						}
 						if err != nil {
 							panic(err)
@@ -614,9 +614,9 @@ func operatePoliciesByPermission(permission *Permission, enforcer *casbin.Enforc
 					}
 				} else {
 					if isAdd {
-						_, err = enforcer.AddNamedPolicy("p", v, resource, action, "", "", permissionId)
+						_, err = enforcer.AddNamedPolicy("p", v, resource, action)
 					} else {
-						_, err = enforcer.RemoveNamedPolicy("p", v, resource, action, "", "", permissionId)
+						_, err = enforcer.RemoveNamedPolicy("p", v, resource, action)
 					}
 					if err != nil {
 						panic(err)
