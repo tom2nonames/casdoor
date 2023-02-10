@@ -15,12 +15,13 @@
 package object
 
 import (
-	"strings"
-
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	xormadapter "github.com/casbin/xorm-adapter/v3"
 	"github.com/casdoor/casdoor/conf"
+	"sort"
+	"strings"
+	"sync"
 )
 
 func getEnforcer(permission *Permission) *casbin.Enforcer {
@@ -74,17 +75,17 @@ m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`
 
 func getPolicies(permission *Permission) [][]string {
 	var policies [][]string
-	permissionId := permission.Owner + "/" + permission.Name
+	//permissionId := permission.Owner + "/" + permission.Name
 	domainExist := len(permission.Domains) > 0
 	for _, user := range permission.Users {
 		for _, resource := range permission.Resources {
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
-						policies = append(policies, []string{user, domain, resource, strings.ToLower(action), "", permissionId})
+						policies = append(policies, []string{user, domain, resource, strings.ToLower(action)})
 					}
 				} else {
-					policies = append(policies, []string{user, resource, strings.ToLower(action), "", "", permissionId})
+					policies = append(policies, []string{user, resource, strings.ToLower(action)})
 				}
 			}
 		}
@@ -94,10 +95,10 @@ func getPolicies(permission *Permission) [][]string {
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
-						policies = append(policies, []string{role, domain, resource, strings.ToLower(action), "", permissionId})
+						policies = append(policies, []string{role, domain, resource, strings.ToLower(action)})
 					}
 				} else {
-					policies = append(policies, []string{role, resource, strings.ToLower(action), "", "", permissionId})
+					policies = append(policies, []string{role, resource, strings.ToLower(action)})
 				}
 			}
 		}
@@ -196,22 +197,125 @@ func Enforce(permissionRule *PermissionRule) bool {
 	return allow
 }
 
+//func BatchEnforce(permissionRules []PermissionRule) []bool {
+//	var requests [][]interface{}
+//	for _, permissionRule := range permissionRules {
+//		if permissionRule.V3 != "" {
+//			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2, permissionRule.V3})
+//		} else {
+//			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2})
+//		}
+//	}
+//	permission := GetPermission(permissionRules[0].Id)
+//	enforcer := getEnforcer(permission)
+//	allow, err := enforcer.BatchEnforce(requests)
+//	if err != nil {
+//		panic(err)
+//	}
+//	return allow
+//}
+
+//func BatchEnforce(permissionRules []PermissionRule) []bool {
+//	allows := make([]bool, len(permissionRules))
+//	type group struct {
+//		requests [][]interface{}
+//		rank     []int
+//	}
+//	groups := make(map[string]*group)
+//	for i, permissionRule := range permissionRules {
+//		r := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
+//		if permissionRule.V3 != "" {
+//			r = append(r, permissionRule.V3)
+//		}
+//		if groups[permissionRule.Id] == nil {
+//			groups[permissionRule.Id] = &group{}
+//		}
+//		groups[permissionRule.Id].requests = append(groups[permissionRule.Id].requests, r)
+//		groups[permissionRule.Id].rank = append(groups[permissionRule.Id].rank, i)
+//	}
+//
+//	wg := sync.WaitGroup{}
+//	wg.Add(len(groups))
+//	for id, g := range groups {
+//		permission := GetPermission(id)
+//		enforcer := getEnforcer(permission)
+//		go func(g *group) {
+//			allow, err := enforcer.BatchEnforce(g.requests)
+//			if err != nil {
+//				panic(err)
+//			}
+//
+//			if len(allow) != len(g.rank) {
+//				panic("length does not match")
+//			}
+//
+//			for k, v := range allow {
+//				allows[g.rank[k]] = v
+//			}
+//			wg.Done()
+//		}(g)
+//	}
+//	wg.Wait()
+//
+//	return allows
+//}
+
 func BatchEnforce(permissionRules []PermissionRule) []bool {
-	var requests [][]interface{}
-	for _, permissionRule := range permissionRules {
+	allows := make([]bool, len(permissionRules))
+	type group struct {
+		requests [][]interface{}
+		rank     []int
+		id       string
+	}
+	groups := make(map[string]*group)
+	for i, permissionRule := range permissionRules {
+		r := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
 		if permissionRule.V3 != "" {
-			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2, permissionRule.V3})
-		} else {
-			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2})
+			r = append(r, permissionRule.V3)
 		}
+		if groups[permissionRule.Id] == nil {
+			groups[permissionRule.Id] = &group{}
+		}
+		groups[permissionRule.Id].requests = append(groups[permissionRule.Id].requests, r)
+		groups[permissionRule.Id].rank = append(groups[permissionRule.Id].rank, i)
+		groups[permissionRule.Id].id = permissionRule.Id
 	}
-	permission := GetPermission(permissionRules[0].Id)
-	enforcer := getEnforcer(permission)
-	allow, err := enforcer.BatchEnforce(requests)
-	if err != nil {
-		panic(err)
+
+	keys := make([]string, 0)
+
+	var groupSlice []*group
+	for k, _ := range groups {
+		keys = append(keys, k)
 	}
-	return allow
+	sort.Strings(keys)
+	for _, k := range keys {
+		groupSlice = append(groupSlice, groups[k])
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(groups))
+	for _, g := range groupSlice {
+		permission := GetPermission(g.id)
+		enforcer := getEnforcer(permission)
+		go func(g *group) {
+			allow, err := enforcer.BatchEnforce(g.requests)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(allow) != len(g.rank) {
+				panic("length does not match")
+			}
+
+			for k, v := range allow {
+				allows[g.rank[k]] = v
+			}
+			wg.Done()
+		}(g)
+	}
+	wg.Wait()
+
+	return allows
 }
 
 func getAllValues(userId string, fn func(enforcer *casbin.Enforcer) []string) []string {
@@ -275,7 +379,7 @@ func getGroupingPoliciesByPermissions(column []string, role *Role, permissions [
 func getPoliciesByPermissions(column []string, permissions []*Permission) map[string][][]string {
 	var policies = make(map[string][][]string, len(permissions))
 	for _, p := range permissions {
-		permissionId := p.Owner + "/" + p.Name
+		//permissionId := p.Owner + "/" + p.Name
 		domainExist := len(p.Domains) > 0
 		key := p.Adapter + "/" + strings.Join(p.Domains, ",")
 		//if _, ok := policies[key]; ok {
@@ -286,10 +390,10 @@ func getPoliciesByPermissions(column []string, permissions []*Permission) map[st
 				for _, action := range p.Actions {
 					if domainExist {
 						for _, domain := range p.Domains {
-							policies[key] = append(policies[key], []string{v, domain, resource, strings.ToLower(action), "", permissionId})
+							policies[key] = append(policies[key], []string{v, domain, resource, strings.ToLower(action)})
 						}
 					} else {
-						policies[key] = append(policies[key], []string{v, resource, strings.ToLower(action), "", "", permissionId})
+						policies[key] = append(policies[key], []string{v, resource, strings.ToLower(action)})
 					}
 				}
 			}
