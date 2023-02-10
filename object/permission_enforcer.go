@@ -196,22 +196,40 @@ func Enforce(permissionRule *PermissionRule) bool {
 	return allow
 }
 
+//func BatchEnforce(permissionRules []PermissionRule) []bool {
+//	var requests [][]interface{}
+//	for _, permissionRule := range permissionRules {
+//		if permissionRule.V3 != "" {
+//			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2, permissionRule.V3})
+//		} else {
+//			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2})
+//		}
+//	}
+//	permission := GetPermission(permissionRules[0].Id)
+//	enforcer := getEnforcer(permission)
+//	allow, err := enforcer.BatchEnforce(requests)
+//	if err != nil {
+//		panic(err)
+//	}
+//	return allow
+//}
+
 func BatchEnforce(permissionRules []PermissionRule) []bool {
-	var requests [][]interface{}
+	var allows []bool
 	for _, permissionRule := range permissionRules {
+		request := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
 		if permissionRule.V3 != "" {
-			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2, permissionRule.V3})
-		} else {
-			requests = append(requests, []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2})
+			request = append(request, permissionRule.V3)
 		}
+		permission := GetPermission(permissionRule.Id)
+		enforcer := getEnforcer(permission)
+		allow, err := enforcer.Enforce(request...)
+		if err != nil {
+			panic(err)
+		}
+		allows = append(allows, allow)
 	}
-	permission := GetPermission(permissionRules[0].Id)
-	enforcer := getEnforcer(permission)
-	allow, err := enforcer.BatchEnforce(requests)
-	if err != nil {
-		panic(err)
-	}
-	return allow
+	return allows
 }
 
 func getAllValues(userId string, fn func(enforcer *casbin.Enforcer) []string) []string {
