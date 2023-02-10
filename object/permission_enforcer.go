@@ -15,12 +15,13 @@
 package object
 
 import (
-	"strings"
-
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	xormadapter "github.com/casbin/xorm-adapter/v3"
 	"github.com/casdoor/casdoor/conf"
+	"sort"
+	"strings"
+	"sync"
 )
 
 func getEnforcer(permission *Permission) *casbin.Enforcer {
@@ -214,21 +215,106 @@ func Enforce(permissionRule *PermissionRule) bool {
 //	return allow
 //}
 
+//func BatchEnforce(permissionRules []PermissionRule) []bool {
+//	allows := make([]bool, len(permissionRules))
+//	type group struct {
+//		requests [][]interface{}
+//		rank     []int
+//	}
+//	groups := make(map[string]*group)
+//	for i, permissionRule := range permissionRules {
+//		r := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
+//		if permissionRule.V3 != "" {
+//			r = append(r, permissionRule.V3)
+//		}
+//		if groups[permissionRule.Id] == nil {
+//			groups[permissionRule.Id] = &group{}
+//		}
+//		groups[permissionRule.Id].requests = append(groups[permissionRule.Id].requests, r)
+//		groups[permissionRule.Id].rank = append(groups[permissionRule.Id].rank, i)
+//	}
+//
+//	wg := sync.WaitGroup{}
+//	wg.Add(len(groups))
+//	for id, g := range groups {
+//		permission := GetPermission(id)
+//		enforcer := getEnforcer(permission)
+//		go func(g *group) {
+//			allow, err := enforcer.BatchEnforce(g.requests)
+//			if err != nil {
+//				panic(err)
+//			}
+//
+//			if len(allow) != len(g.rank) {
+//				panic("length does not match")
+//			}
+//
+//			for k, v := range allow {
+//				allows[g.rank[k]] = v
+//			}
+//			wg.Done()
+//		}(g)
+//	}
+//	wg.Wait()
+//
+//	return allows
+//}
+
 func BatchEnforce(permissionRules []PermissionRule) []bool {
-	var allows []bool
-	for _, permissionRule := range permissionRules {
-		request := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
-		if permissionRule.V3 != "" {
-			request = append(request, permissionRule.V3)
-		}
-		permission := GetPermission(permissionRule.Id)
-		enforcer := getEnforcer(permission)
-		allow, err := enforcer.Enforce(request...)
-		if err != nil {
-			panic(err)
-		}
-		allows = append(allows, allow)
+	allows := make([]bool, len(permissionRules))
+	type group struct {
+		requests [][]interface{}
+		rank     []int
+		id       string
 	}
+	groups := make(map[string]*group)
+	for i, permissionRule := range permissionRules {
+		r := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
+		if permissionRule.V3 != "" {
+			r = append(r, permissionRule.V3)
+		}
+		if groups[permissionRule.Id] == nil {
+			groups[permissionRule.Id] = &group{}
+		}
+		groups[permissionRule.Id].requests = append(groups[permissionRule.Id].requests, r)
+		groups[permissionRule.Id].rank = append(groups[permissionRule.Id].rank, i)
+		groups[permissionRule.Id].id = permissionRule.Id
+	}
+
+	keys := make([]string, 0)
+
+	var groupSlice []*group
+	for k, _ := range groups {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		groupSlice = append(groupSlice, groups[k])
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(groups))
+	for _, g := range groupSlice {
+		permission := GetPermission(g.id)
+		enforcer := getEnforcer(permission)
+		go func(g *group) {
+			allow, err := enforcer.BatchEnforce(g.requests)
+			if err != nil {
+				panic(err)
+			}
+
+			if len(allow) != len(g.rank) {
+				panic("length does not match")
+			}
+
+			for k, v := range allow {
+				allows[g.rank[k]] = v
+			}
+			wg.Done()
+		}(g)
+	}
+	wg.Wait()
+
 	return allows
 }
 
