@@ -20,9 +20,9 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
-	xormadapter "github.com/casbin/xorm-adapter/v3"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/object"
+	xormadapter "github.com/casdoor/xorm-adapter/v3"
 	stringadapter "github.com/qiangmzsx/string-adapter/v2"
 )
 
@@ -165,7 +165,7 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 
 func isAllowedInDemoMode(subOwner string, subName string, method string, urlPath string, objOwner string, objName string) bool {
 	if method == "POST" {
-		if strings.HasPrefix(urlPath, "/api/login") || urlPath == "/api/logout" || urlPath == "/api/signup" || urlPath == "/api/send-verification-code" {
+		if strings.HasPrefix(urlPath, "/api/login") || urlPath == "/api/logout" || urlPath == "/api/signup" || urlPath == "/api/send-verification-code" || urlPath == "/api/send-email" {
 			return true
 		} else if urlPath == "/api/update-user" {
 			// Allow ordinary users to update their own information

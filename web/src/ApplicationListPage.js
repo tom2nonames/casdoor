@@ -14,7 +14,7 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Col, List, Popconfirm, Result, Row, Table, Tooltip} from "antd";
+import {Button, Col, List, Popconfirm, Row, Table, Tooltip} from "antd";
 import {EditOutlined} from "@ant-design/icons";
 import moment from "moment";
 import * as Setting from "./Setting";
@@ -25,19 +25,12 @@ import BaseListPage from "./BaseListPage";
 class ApplicationListPage extends BaseListPage {
   constructor(props) {
     super(props);
-    this.state = {
-      classes: props,
-      organizationName: props.account.owner,
-      data: [],
-      pagination: {
-        current: 1,
-        pageSize: 10,
-      },
-      loading: false,
-      searchText: "",
-      searchedColumn: "",
-      isAuthorized: true,
-    };
+  }
+
+  componentDidMount() {
+    this.setState({
+      organizationName: this.props.account.owner,
+    });
   }
 
   newApplication() {
@@ -259,17 +252,6 @@ class ApplicationListPage extends BaseListPage {
       showTotal: () => i18next.t("general:{total} in total").replace("{total}", this.state.pagination.total),
     };
 
-    if (!this.state.isAuthorized) {
-      return (
-        <Result
-          status="403"
-          title="403 Unauthorized"
-          subTitle={i18next.t("general:Sorry, you do not have permission to access this page or logged in status invalid.")}
-          extra={<a href="/"><Button type="primary">{i18next.t("general:Back Home")}</Button></a>}
-        />
-      );
-    }
-
     return (
       <div>
         <Table scroll={{x: "max-content"}} columns={columns} dataSource={applications} rowKey="name" size="middle" bordered pagination={paginationProps}
@@ -305,7 +287,7 @@ class ApplicationListPage extends BaseListPage {
             searchedColumn: params.searchedColumn,
           });
         } else {
-          if (res.msg.includes("Unauthorized")) {
+          if (Setting.isResponseDenied(res)) {
             this.setState({
               loading: false,
               isAuthorized: false,

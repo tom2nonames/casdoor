@@ -120,8 +120,8 @@ func initAPI() {
 	beego.Router("/api/get-captcha", &controllers.ApiController{}, "GET:GetCaptcha")
 
 	beego.Router("/api/get-ldap-user", &controllers.ApiController{}, "POST:GetLdapUser")
-	beego.Router("/api/get-ldaps", &controllers.ApiController{}, "POST:GetLdaps")
-	beego.Router("/api/get-ldap", &controllers.ApiController{}, "POST:GetLdap")
+	beego.Router("/api/get-ldaps", &controllers.ApiController{}, "GET:GetLdaps")
+	beego.Router("/api/get-ldap", &controllers.ApiController{}, "GET:GetLdap")
 	beego.Router("/api/add-ldap", &controllers.ApiController{}, "POST:AddLdap")
 	beego.Router("/api/update-ldap", &controllers.ApiController{}, "POST:UpdateLdap")
 	beego.Router("/api/delete-ldap", &controllers.ApiController{}, "POST:DeleteLdap")
@@ -159,14 +159,16 @@ func initAPI() {
 	beego.Router("/api/login/oauth/access_token", &controllers.ApiController{}, "POST:GetOAuthToken")
 	beego.Router("/api/login/oauth/refresh_token", &controllers.ApiController{}, "POST:RefreshToken")
 	beego.Router("/api/login/oauth/introspect", &controllers.ApiController{}, "POST:IntrospectToken")
-	beego.Router("/api/login/oauth/logout", &controllers.ApiController{}, "GET:TokenLogout")
-
 	beego.Router("/api/get-records", &controllers.ApiController{}, "GET:GetRecords")
 	beego.Router("/api/get-records-filter", &controllers.ApiController{}, "POST:GetRecordsByFilter")
 	beego.Router("/api/add-record", &controllers.ApiController{}, "POST:AddRecord")
 
 	beego.Router("/api/get-sessions", &controllers.ApiController{}, "GET:GetSessions")
+	beego.Router("/api/get-session", &controllers.ApiController{}, "GET:GetSingleSession")
+	beego.Router("/api/update-session", &controllers.ApiController{}, "POST:UpdateSession")
+	beego.Router("/api/add-session", &controllers.ApiController{}, "POST:AddSession")
 	beego.Router("/api/delete-session", &controllers.ApiController{}, "POST:DeleteSession")
+	beego.Router("/api/is-session-duplicated", &controllers.ApiController{}, "GET:IsSessionDuplicated")
 
 	beego.Router("/api/get-webhooks", &controllers.ApiController{}, "GET:GetWebhooks")
 	beego.Router("/api/get-webhook", &controllers.ApiController{}, "GET:GetWebhook")

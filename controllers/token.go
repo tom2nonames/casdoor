@@ -16,7 +16,6 @@ package controllers
 
 import (
 	"encoding/json"
-	"net/http"
 
 	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
@@ -55,7 +54,7 @@ func (c *ApiController) GetTokens() {
 // @Title GetToken
 // @Tag Token API
 // @Description get token
-// @Param   id     query    string  true        "The id of token"
+// @Param   id     query    string  true        "The id ( owner/name ) of token"
 // @Success 200 {object} object.Token The Response object
 // @router /get-token [get]
 func (c *ApiController) GetToken() {
@@ -69,7 +68,7 @@ func (c *ApiController) GetToken() {
 // @Title UpdateToken
 // @Tag Token API
 // @Description update token
-// @Param   id     query    string  true        "The id of token"
+// @Param   id     query    string  true        "The id ( owner/name ) of token"
 // @Param   body    body   object.Token  true        "Details of the token"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-token [post]
@@ -129,7 +128,7 @@ func (c *ApiController) DeleteToken() {
 // @Title GetOAuthCode
 // @Tag Token API
 // @Description get OAuth code
-// @Param   user_id     query    string  true        "The id of user"
+// @Param   id     query    string  true        "The id ( owner/name ) of user"
 // @Param   client_id     query    string  true        "OAuth client id"
 // @Param   response_type     query    string  true        "OAuth response type"
 // @Param   redirect_uri     query    string  true        "OAuth redirect URI"
@@ -173,6 +172,7 @@ func (c *ApiController) GetOAuthCode() {
 // @router /login/oauth/access_token [post]
 func (c *ApiController) GetOAuthToken() {
 	grantType := c.Input().Get("grant_type")
+	refreshToken := c.Input().Get("refresh_token")
 	clientId := c.Input().Get("client_id")
 	clientSecret := c.Input().Get("client_secret")
 	code := c.Input().Get("code")
@@ -193,6 +193,7 @@ func (c *ApiController) GetOAuthToken() {
 			clientId = tokenRequest.ClientId
 			clientSecret = tokenRequest.ClientSecret
 			grantType = tokenRequest.GrantType
+			refreshToken = tokenRequest.RefreshToken
 			code = tokenRequest.Code
 			verifier = tokenRequest.Verifier
 			scope = tokenRequest.Scope
@@ -204,7 +205,7 @@ func (c *ApiController) GetOAuthToken() {
 	}
 	host := c.Ctx.Request.Host
 
-	c.Data["json"] = object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, tag, avatar, c.GetAcceptLanguage())
+	c.Data["json"] = object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage())
 	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }
@@ -244,28 +245,6 @@ func (c *ApiController) RefreshToken() {
 
 	c.Data["json"] = object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
 	c.SetTokenErrorHttpStatus()
-	c.ServeJSON()
-}
-
-// TokenLogout
-// @Title TokenLogout
-// @Tag Token API
-// @Description delete token by AccessToken
-// @Param   id_token_hint     query    string  true        "id_token_hint"
-// @Param   post_logout_redirect_uri    query    string  false      "post_logout_redirect_uri"
-// @Param   state     query    string  true        "state"
-// @Success 200 {object} controllers.Response The Response object
-// @router /login/oauth/logout [get]
-func (c *ApiController) TokenLogout() {
-	token := c.Input().Get("id_token_hint")
-	flag, application := object.DeleteTokenByAccessToken(token)
-	redirectUri := c.Input().Get("post_logout_redirect_uri")
-	state := c.Input().Get("state")
-	if application != nil && application.IsRedirectUriValid(redirectUri) {
-		c.Ctx.Redirect(http.StatusFound, redirectUri+"?state="+state)
-		return
-	}
-	c.Data["json"] = wrapActionResponse(flag)
 	c.ServeJSON()
 }
 

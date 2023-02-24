@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"github.com/casbin/casbin/v2"
 	"github.com/casdoor/casdoor/util"
+	"github.com/xorm-io/core"
 	"strings"
-	"xorm.io/core"
 )
 
 type Role struct {
@@ -248,6 +248,13 @@ func UpdateRole(id string, role *Role) bool {
 	affected, err := adapter.Engine.ID(core.PK{owner, name}).AllCols().Update(role)
 	if err != nil {
 		panic(err)
+	}
+
+	newRoleID := role.GetId()
+	permissions = GetPermissionsByRole(newRoleID)
+	for _, permission := range permissions {
+		addGroupingPolicies(permission)
+		addPolicies(permission)
 	}
 
 	return affected != 0

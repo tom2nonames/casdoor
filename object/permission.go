@@ -20,7 +20,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casdoor/casdoor/util"
-	"xorm.io/core"
+	"github.com/xorm-io/core"
 )
 
 type Permission struct {
@@ -56,6 +56,40 @@ type PermissionRule struct {
 	V4    string `xorm:"varchar(100) index not null default ''" json:"v4"`
 	V5    string `xorm:"varchar(100) index not null default ''" json:"v5"`
 	Id    string `xorm:"varchar(100) index not null default ''" json:"id"`
+}
+
+const (
+	builtInAvailableField = 5 // Casdoor built-in adapter, use V5 to filter permission, so has 5 available field
+	builtInAdapter        = "permission_rule"
+)
+
+func (p *Permission) GetId() string {
+	return util.GetId(p.Owner, p.Name)
+}
+
+func (p *PermissionRule) GetRequest(adapterName string, permissionId string) ([]interface{}, error) {
+	request := []interface{}{p.V0, p.V1, p.V2}
+
+	if p.V3 != "" {
+		request = append(request, p.V3)
+	}
+
+	if p.V4 != "" {
+		request = append(request, p.V4)
+	}
+
+	if adapterName == builtInAdapter {
+		if p.V5 != "" {
+			return nil, fmt.Errorf("too many parameters. The maximum parameter number cannot exceed %d", builtInAvailableField)
+		}
+		request = append(request, permissionId)
+		return request, nil
+	} else {
+		if p.V5 != "" {
+			request = append(request, p.V5)
+		}
+		return request, nil
+	}
 }
 
 func GetPermissionCount(owner, field, value string) int {
@@ -358,7 +392,6 @@ func UpdatePermission(id string, permission *Permission) bool {
 				}
 			}
 		}
-
 	}
 
 	if len(actionsAdded) > 0 {
@@ -420,10 +453,6 @@ func DeletePermission(permission *Permission) bool {
 	return affected != 0
 }
 
-func (permission *Permission) GetId() string {
-	return fmt.Sprintf("%s/%s", permission.Owner, permission.Name)
-}
-
 func GetPermissionsByUser(userId string) []*Permission {
 	permissions := []*Permission{}
 	err := adapter.Engine.Where("users like ?", "%"+userId+"%").Find(&permissions)
@@ -482,33 +511,6 @@ func GetPermissionsBySubmitter(owner string, submitter string) []*Permission {
 	}
 
 	return permissions
-}
-
-func MigratePermissionRule() {
-	models := []*Model{}
-	err := adapter.Engine.Find(&models, &Model{})
-	if err != nil {
-		panic(err)
-	}
-
-	isHit := false
-	for _, model := range models {
-		if strings.Contains(model.ModelText, "permission") {
-			// update model table
-			model.ModelText = strings.Replace(model.ModelText, "permission,", "", -1)
-			UpdateModel(model.GetId(), model)
-			isHit = true
-		}
-	}
-
-	if isHit {
-		// update permission_rule table
-		sql := "UPDATE `permission_rule`SET V0 = V1, V1 = V2, V2 = V3, V3 = V4, V4 = V5 WHERE V0 IN (SELECT CONCAT(owner, '/', name) AS permission_id FROM `permission`)"
-		_, err = adapter.Engine.Exec(sql)
-		if err != nil {
-			return
-		}
-	}
 }
 
 func ContainsAsterisk(userId string, users []string) bool {

@@ -23,11 +23,11 @@ import (
 	"github.com/casdoor/casdoor/i18n"
 	"github.com/casdoor/casdoor/idp"
 	"github.com/casdoor/casdoor/util"
-	"xorm.io/core"
+	"github.com/xorm-io/core"
 )
 
 const (
-	hourSeconds          = 3600
+	hourSeconds          = int(time.Hour / time.Second)
 	InvalidRequest       = "invalid_request"
 	InvalidClient        = "invalid_client"
 	InvalidGrant         = "invalid_grant"
@@ -204,7 +204,7 @@ func DeleteToken(token *Token) bool {
 	return affected != 0
 }
 
-func DeleteTokenByAccessToken(accessToken string) (bool, *Application) {
+func ExpireTokenByAccessToken(accessToken string) (bool, *Application, *Token) {
 	token := Token{AccessToken: accessToken}
 	existed, err := adapter.Engine.Get(&token)
 	if err != nil {
@@ -212,15 +212,17 @@ func DeleteTokenByAccessToken(accessToken string) (bool, *Application) {
 	}
 
 	if !existed {
-		return false, nil
+		return false, nil, nil
 	}
-	application := getApplication(token.Owner, token.Application)
-	affected, err := adapter.Engine.Where("access_token=?", accessToken).Delete(&Token{})
+
+	token.ExpiresIn = 0
+	affected, err := adapter.Engine.ID(core.PK{token.Owner, token.Name}).Cols("expires_in").Update(&token)
 	if err != nil {
 		panic(err)
 	}
 
-	return affected != 0, application
+	application := getApplication(token.Owner, token.Application)
+	return affected != 0, application, &token
 }
 
 func GetTokenByAccessToken(accessToken string) *Token {
@@ -319,7 +321,7 @@ func GetOAuthCode(userId string, clientId string, responseType string, redirectU
 	}
 }
 
-func GetOAuthToken(grantType string, clientId string, clientSecret string, code string, verifier string, scope string, username string, password string, host string, tag string, avatar string, lang string) interface{} {
+func GetOAuthToken(grantType string, clientId string, clientSecret string, code string, verifier string, scope string, username string, password string, host string, refreshToken string, tag string, avatar string, lang string) interface{} {
 	application := GetApplicationByClientId(clientId)
 	if application == nil {
 		return &TokenError{
@@ -346,6 +348,8 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 		token, tokenError = GetPasswordToken(application, username, password, scope, host)
 	case "client_credentials": // Client Credentials Grant
 		token, tokenError = GetClientCredentialsToken(application, clientSecret, scope, host)
+	case "refresh_token":
+		return RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
 	}
 
 	if tag == "wechat_miniprogram" {

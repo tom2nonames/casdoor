@@ -19,7 +19,7 @@ import (
 
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casdoor/casdoor/util"
-	"xorm.io/core"
+	"github.com/xorm-io/core"
 )
 
 type Model struct {
@@ -68,14 +68,14 @@ func getModel(owner string, name string) *Model {
 		return nil
 	}
 
-	model := Model{Owner: owner, Name: name}
-	existed, err := adapter.Engine.Get(&model)
+	m := Model{Owner: owner, Name: name}
+	existed, err := adapter.Engine.Get(&m)
 	if err != nil {
 		panic(err)
 	}
 
 	if existed {
-		return &model
+		return &m
 	} else {
 		return nil
 	}
@@ -84,6 +84,17 @@ func getModel(owner string, name string) *Model {
 func GetModel(id string) *Model {
 	owner, name := util.GetOwnerAndNameFromId(id)
 	return getModel(owner, name)
+}
+
+func UpdateModelWithCheck(id string, modelObj *Model) error {
+	// check model grammar
+	_, err := model.NewModelFromString(modelObj.ModelText)
+	if err != nil {
+		return err
+	}
+	UpdateModel(id, modelObj)
+
+	return nil
 }
 
 func UpdateModel(id string, modelObj *Model) bool {
@@ -97,11 +108,6 @@ func UpdateModel(id string, modelObj *Model) bool {
 		if err != nil {
 			return false
 		}
-	}
-	// check model grammar
-	_, err := model.NewModelFromString(modelObj.ModelText)
-	if err != nil {
-		panic(err)
 	}
 
 	affected, err := adapter.Engine.ID(core.PK{owner, name}).AllCols().Update(modelObj)
@@ -151,4 +157,8 @@ func modelChangeTrigger(oldName string, newName string) error {
 	}
 
 	return session.Commit()
+}
+
+func HasRoleDefinition(m model.Model) bool {
+	return m["g"] != nil
 }
