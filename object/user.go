@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/casbin/casbin/v2"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/util"
 	"github.com/duo-labs/webauthn/webauthn"
@@ -382,7 +383,7 @@ func UpdateUser(id string, user *User, columns []string, isGlobalAdmin bool) boo
 	}
 
 	if name != user.Name {
-		err := userChangeTrigger(name, user.Name)
+		err := userChangeTrigger(id, user.Owner+"/"+user.Name)
 		if err != nil {
 			return false
 		}
@@ -532,6 +533,57 @@ func DeleteUser(user *User) bool {
 	// Forced offline the user first
 	DeleteSession(user.GetId())
 
+	id := user.Owner + "/" + user.Name
+	roles := GetRolesByUser(id)
+	permissionsByUser := GetPermissionsByUser(id)
+	var permissionsByRole []*Permission
+
+	for _, role := range roles {
+		for j, u := range role.Users {
+			// u = organization/username
+			if u == id {
+				role.Users = append(role.Users[:j], role.Users[j+1:]...)
+				break
+			}
+		}
+		_, err := adapter.Engine.ID(core.PK{role.Owner, role.Name}).AllCols().Update(role)
+		if err != nil {
+			return false
+		}
+
+		permissionsByRole = append(permissionsByRole, GetPermissionsByRole(role.Owner+"/"+role.Name)...)
+	}
+
+	for _, p := range permissionsByUser {
+		for j, u := range p.Users {
+			if u == id {
+				fmt.Println(p.Users)
+				p.Users = append(p.Users[:j], p.Users[j+1:]...)
+				fmt.Println(p.Users)
+				fmt.Println(p)
+				break
+			}
+		}
+		_, err := adapter.Engine.ID(core.PK{p.Owner, p.Name}).AllCols().Update(p)
+		if err != nil {
+			return false
+		}
+	}
+
+	permissions := append(permissionsByUser, permissionsByRole...)
+	emap := make(map[string]*casbin.Enforcer, len(permissions))
+	for _, p := range permissions {
+		key := p.Adapter + "/" + strings.Join(p.Domains, ",")
+		if _, ok := emap[key]; !ok {
+			emap[key] = getEnforcer(p)
+		}
+	}
+
+	for _, e := range emap {
+		e.RemovePolicy(id)
+		e.RemoveGroupingPolicy(id)
+	}
+
 	affected, err := adapter.Engine.ID(core.PK{user.Owner, user.Name}).Delete(&User{})
 	if err != nil {
 		panic(err)
@@ -586,6 +638,65 @@ func ExtendUserWithRolesAndPermissions(user *User) {
 	user.Permissions = GetPermissionsByUser(user.GetId())
 }
 
+//func userChangeTrigger(oldName string, newName string) error {
+//	session := adapter.Engine.NewSession()
+//	defer session.Close()
+//
+//	err := session.Begin()
+//	if err != nil {
+//		return err
+//	}
+//
+//	var roles []*Role
+//	err = adapter.Engine.Find(&roles)
+//	if err != nil {
+//		return err
+//	}
+//	for _, role := range roles {
+//		for j, u := range role.Users {
+//			// u = organization/username
+//			split := strings.Split(u, "/")
+//			if split[1] == oldName {
+//				split[1] = newName
+//				role.Users[j] = split[0] + "/" + split[1]
+//			}
+//		}
+//		_, err = session.Where("name=?", role.Name).Update(role)
+//		if err != nil {
+//			return err
+//		}
+//	}
+//
+//	var permissions []*Permission
+//	err = adapter.Engine.Find(&permissions)
+//	if err != nil {
+//		return err
+//	}
+//	for _, permission := range permissions {
+//		for j, u := range permission.Users {
+//			// u = organization/username
+//			split := strings.Split(u, "/")
+//			if split[1] == oldName {
+//				split[1] = newName
+//				permission.Users[j] = split[0] + "/" + split[1]
+//			}
+//		}
+//		_, err = session.Where("name=?", permission.Name).Update(permission)
+//		if err != nil {
+//			return err
+//		}
+//	}
+//
+//	resource := new(Resource)
+//	resource.User = newName
+//	_, err = session.Where("user=?", oldName).Update(resource)
+//	if err != nil {
+//		return err
+//	}
+//
+//	return session.Commit()
+//}
+
 func userChangeTrigger(oldName string, newName string) error {
 	session := adapter.Engine.NewSession()
 	defer session.Close()
@@ -595,52 +706,51 @@ func userChangeTrigger(oldName string, newName string) error {
 		return err
 	}
 
-	var roles []*Role
-	err = adapter.Engine.Find(&roles)
-	if err != nil {
-		return err
-	}
+	roles := GetRolesByUser(oldName)
+	permissionsByUser := GetPermissionsByUser(oldName)
+	var permissionsByRole []*Permission
+
 	for _, role := range roles {
 		for j, u := range role.Users {
 			// u = organization/username
-			split := strings.Split(u, "/")
-			if split[1] == oldName {
-				split[1] = newName
-				role.Users[j] = split[0] + "/" + split[1]
+			if u == oldName {
+				role.Users[j] = newName
 			}
 		}
 		_, err = session.Where("name=?", role.Name).Update(role)
 		if err != nil {
 			return err
 		}
+
+		permissionsByRole = append(permissionsByRole, GetPermissionsByRole(role.Owner+"/"+role.Name)...)
 	}
 
-	var permissions []*Permission
-	err = adapter.Engine.Find(&permissions)
-	if err != nil {
-		return err
-	}
-	for _, permission := range permissions {
-		for j, u := range permission.Users {
-			// u = organization/username
-			split := strings.Split(u, "/")
-			if split[1] == oldName {
-				split[1] = newName
-				permission.Users[j] = split[0] + "/" + split[1]
+	for _, p := range permissionsByUser {
+		for j, u := range p.Users {
+			if u == oldName {
+				p.Users[j] = newName
 			}
 		}
-		_, err = session.Where("name=?", permission.Name).Update(permission)
+		_, err = session.Where("name=?", p.Name).Update(p)
 		if err != nil {
 			return err
 		}
 	}
 
-	resource := new(Resource)
-	resource.User = newName
-	_, err = session.Where("user=?", oldName).Update(resource)
-	if err != nil {
-		return err
+	permissions := append(permissionsByUser, permissionsByRole...)
+	emap := make(map[string]*casbin.Enforcer, len(permissions))
+	for _, p := range permissions {
+		key := p.Adapter + "/" + strings.Join(p.Domains, ",")
+		if _, ok := emap[key]; !ok {
+			emap[key] = getEnforcer(p)
+		}
+	}
+
+	for _, e := range emap {
+		e.UpdatePolicy([]string{oldName}, []string{newName})
+		e.UpdateGroupingPolicy([]string{oldName}, []string{newName})
 	}
 
 	return session.Commit()
+
 }
