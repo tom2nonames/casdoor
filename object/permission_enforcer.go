@@ -15,9 +15,7 @@
 package object
 
 import (
-	"fmt"
 	"github.com/casbin/casbin/v2"
-	"github.com/casbin/casbin/v2/config"
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casdoor/casdoor/conf"
 	xormadapter "github.com/casdoor/xorm-adapter/v3"
@@ -489,26 +487,26 @@ e = some(where (p.eft == allow))
 m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`
 		return model.NewModelFromString(modelText)
 	} else {
-		cfg, err := config.NewConfigFromText(modelText)
-		if err != nil {
-			return nil, err
-		}
+		//cfg, err := config.NewConfigFromText(modelText)
+		//if err != nil {
+		//	return nil, err
+		//}
 
 		// load [policy_definition]
-		policyDefinition := strings.Split(cfg.String("policy_definition::p"), ",")
-		fieldsNum := len(policyDefinition)
-		if fieldsNum > builtInAvailableField {
-			panic(fmt.Errorf("the maximum policy_definition field number cannot exceed %d", builtInAvailableField))
-		}
+		//policyDefinition := strings.Split(cfg.String("policy_definition::p"), ",")
+		//fieldsNum := len(policyDefinition)
+		//if fieldsNum > builtInAvailableField {
+		//	panic(fmt.Errorf("the maximum policy_definition field number cannot exceed %d", builtInAvailableField))
+		//}
 		// filled empty field with "" and V5 with "permissionId"
-		for i := builtInAvailableField - fieldsNum; i > 0; i-- {
-			policyDefinition = append(policyDefinition, "")
-		}
-		policyDefinition = append(policyDefinition, "permissionId")
+		//for i := builtInAvailableField - fieldsNum; i > 0; i-- {
+		//	policyDefinition = append(policyDefinition, "")
+		//}
+		//policyDefinition = append(policyDefinition, "permissionId")
 
 		m, _ := model.NewModelFromString(modelText)
-		m.AddDef("p", "p", strings.Join(policyDefinition, ","))
+		//m.AddDef("p", "p", strings.Join(policyDefinition, ","))
 
-		return m, err
+		return m, nil
 	}
 }

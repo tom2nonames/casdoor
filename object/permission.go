@@ -78,18 +78,20 @@ func (p *PermissionRule) GetRequest(adapterName string, permissionId string) ([]
 		request = append(request, p.V4)
 	}
 
-	if adapterName == builtInAdapter {
-		if p.V5 != "" {
-			return nil, fmt.Errorf("too many parameters. The maximum parameter number cannot exceed %d", builtInAvailableField)
-		}
-		request = append(request, permissionId)
-		return request, nil
-	} else {
-		if p.V5 != "" {
-			request = append(request, p.V5)
-		}
-		return request, nil
-	}
+	return request, nil
+
+	//if adapterName == builtInAdapter {
+	//	if p.V5 != "" {
+	//		return nil, fmt.Errorf("too many parameters. The maximum parameter number cannot exceed %d", builtInAvailableField)
+	//	}
+	//	request = append(request, permissionId)
+	//	return request, nil
+	//} else {
+	//	if p.V5 != "" {
+	//		request = append(request, p.V5)
+	//	}
+	//	return request, nil
+	//}
 }
 
 func GetPermissionCount(owner, field, value string) int {
