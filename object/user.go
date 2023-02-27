@@ -606,10 +606,7 @@ func DeleteUser(user *User) bool {
 	for _, p := range permissionsByUser {
 		for j, u := range p.Users {
 			if u == id {
-				fmt.Println(p.Users)
 				p.Users = append(p.Users[:j], p.Users[j+1:]...)
-				fmt.Println(p.Users)
-				fmt.Println(p)
 				break
 			}
 		}

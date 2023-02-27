@@ -15,6 +15,8 @@
 package object
 
 import (
+	"fmt"
+	"github.com/beego/beego/logs"
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casdoor/casdoor/conf"
@@ -297,6 +299,19 @@ func BatchEnforce(permissionRules []PermissionRule) []bool {
 		permission := GetPermission(g.id)
 		enforcer := getEnforcer(permission)
 		go func(g *group) {
+
+			defer func() {
+				if r := recover(); r != nil {
+					var ok bool
+					err, ok := r.(error)
+					if !ok {
+						err = fmt.Errorf("%v", r)
+					}
+					logs.Error("goroutine panic: %v", err)
+					wg.Done()
+				}
+			}()
+
 			allow, err := enforcer.BatchEnforce(g.requests)
 			if err != nil {
 				panic(err)
@@ -311,6 +326,7 @@ func BatchEnforce(permissionRules []PermissionRule) []bool {
 			}
 			wg.Done()
 		}(g)
+
 	}
 	wg.Wait()
 
