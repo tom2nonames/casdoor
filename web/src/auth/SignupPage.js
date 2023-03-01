@@ -13,8 +13,7 @@
 // limitations under the License.
 
 import React from "react";
-import {Link} from "react-router-dom";
-import {Button, Checkbox, Form, Input, Modal, Result} from "antd";
+import {Button, Form, Input, Result} from "antd";
 import * as Setting from "../Setting";
 import * as AuthBackend from "./AuthBackend";
 import * as ProviderButton from "./ProviderButton";
@@ -22,11 +21,12 @@ import i18next from "i18next";
 import * as Util from "./Util";
 import {authConfig} from "./Auth";
 import * as ApplicationBackend from "../backend/ApplicationBackend";
-import {CountDownInput} from "../common/CountDownInput";
+import {SendCodeInput} from "../common/SendCodeInput";
 import SelectRegionBox from "../SelectRegionBox";
 import CustomGithubCorner from "../CustomGithubCorner";
 import SelectLanguageBox from "../SelectLanguageBox";
 import {withRouter} from "react-router-dom";
+import PhoneNumberInput from "../common/PhoneNumberInput";
 
 const formItemLayout = {
   labelCol: {
@@ -69,6 +69,7 @@ class SignupPage extends React.Component {
       application: null,
       email: "",
       phone: "",
+      countryCode: "",
       emailCode: "",
       phoneCode: "",
       validEmail: false,
@@ -113,7 +114,9 @@ class SignupPage extends React.Component {
         });
 
         if (application !== null && application !== undefined) {
-          this.getTermsofuseContent(application.termsOfUse);
+          Setting.getTermsOfUseContent(application.termsOfUse, res => {
+            this.setState({termsOfUseContent: res});
+          });
         }
       });
   }
@@ -132,16 +135,6 @@ class SignupPage extends React.Component {
 
   getApplicationObj() {
     return this.props.application ?? this.state.application;
-  }
-
-  getTermsofuseContent(url) {
-    fetch(url, {
-      method: "GET",
-    }).then(r => {
-      r.text().then(res => {
-        this.setState({termsOfUseContent: res});
-      });
-    });
   }
 
   onUpdateAccount(account) {
@@ -166,7 +159,6 @@ class SignupPage extends React.Component {
 
   onFinish(values) {
     const application = this.getApplicationObj();
-    values.phonePrefix = application.organizationObj.phonePrefix;
     AuthBackend.signup(values)
       .then((res) => {
         if (res.status === "ok") {
@@ -374,7 +366,7 @@ class SignupPage extends React.Component {
                 message: i18next.t("code:Please input your verification code!"),
               }]}
             >
-              <CountDownInput
+              <SendCodeInput
                 disabled={!this.state.validEmail}
                 method={"signup"}
                 onButtonClickArgs={[this.state.email, "email", Setting.getApplicationName(application)]}
@@ -387,35 +379,66 @@ class SignupPage extends React.Component {
     } else if (signupItem.name === "Phone") {
       return (
         <React.Fragment>
-          <Form.Item
-            name="phone"
-            key="phone"
-            label={i18next.t("general:Phone")}
-            rules={[
-              {
-                required: required,
-                message: i18next.t("signup:Please input your phone number!"),
-              },
-              {
-                validator: (_, value) => {
-                  if (this.state.phone !== "" && !Setting.isValidPhone(this.state.phone)) {
-                    this.setState({validPhone: false});
-                    return Promise.reject(i18next.t("signup:The input is not valid Phone!"));
-                  }
+          <Form.Item label={i18next.t("general:Phone")} required>
+            <Input.Group compact>
+              <Form.Item
+                name="countryCode"
+                key="countryCode"
+                noStyle
+                rules={[
+                  {
+                    required: required,
+                    message: i18next.t("signup:Please select your country code!"),
+                  },
+                  {
+                    validator: (_, value) => {
+                      if (this.state.phone !== "" && !Setting.isValidPhone(this.state.phone, this.state.countryCode)) {
+                        this.setState({validPhone: false});
+                        return Promise.reject(i18next.t("signup:The input is not valid Phone!"));
+                      }
 
-                  this.setState({validPhone: true});
-                  return Promise.resolve();
-                },
-              },
-            ]}
-          >
-            <Input
-              style={{
-                width: "100%",
-              }}
-              addonBefore={`+${this.state.application?.organizationObj.phonePrefix}`}
-              onChange={e => this.setState({phone: e.target.value})}
-            />
+                      this.setState({validPhone: true});
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
+              >
+                <PhoneNumberInput
+                  showSearsh={true}
+                  style={{width: "35%"}}
+                  value={this.state.countryCode}
+                  onChange={(value) => {this.setState({countryCode: value});}}
+                  countryCodes={this.getApplicationObj().organizationObj.countryCodes}
+                />
+              </Form.Item>
+              <Form.Item
+                name="phone"
+                key="phone"
+                noStyle
+                rules={[
+                  {
+                    required: required,
+                    message: i18next.t("signup:Please input your phone number!"),
+                  },
+                  {
+                    validator: (_, value) => {
+                      if (this.state.phone !== "" && !Setting.isValidPhone(this.state.phone, this.state.countryCode)) {
+                        this.setState({validPhone: false});
+                        return Promise.reject(i18next.t("signup:The input is not valid Phone!"));
+                      }
+
+                      this.setState({validPhone: true});
+                      return Promise.resolve();
+                    },
+                  },
+                ]}
+              >
+                <Input
+                  style={{width: "65%"}}
+                  onChange={e => this.setState({phone: e.target.value})}
+                />
+              </Form.Item>
+            </Input.Group>
           </Form.Item>
           <Form.Item
             name="phoneCode"
@@ -428,7 +451,7 @@ class SignupPage extends React.Component {
               },
             ]}
           >
-            <CountDownInput
+            <SendCodeInput
               disabled={!this.state.validPhone}
               method={"signup"}
               onButtonClickArgs={[this.state.phone, "phone", Setting.getApplicationName(application)]}
@@ -484,58 +507,28 @@ class SignupPage extends React.Component {
       );
     } else if (signupItem.name === "Agreement") {
       return (
-        <Form.Item
-          name="agreement"
-          key="agreement"
-          valuePropName="checked"
-          rules={[
-            {
-              required: required,
-              message: i18next.t("signup:Please accept the agreement!"),
-            },
-          ]}
-          {...tailFormItemLayout}
-        >
-          <Checkbox>
-            {i18next.t("signup:Accept")}&nbsp;
-            <Link onClick={() => {
-              this.setState({
-                isTermsOfUseVisible: true,
-              });
-            }}>
-              {i18next.t("signup:Terms of Use")}
-            </Link>
-          </Checkbox>
-        </Form.Item>
+        Setting.renderAgreement(Setting.isAgreementRequired(application), () => {
+          this.setState({
+            isTermsOfUseVisible: true,
+          });
+        }, false, tailFormItemLayout, Setting.isDefaultTrue(application))
       );
     }
   }
 
   renderModal() {
     return (
-      <Modal
-        title={i18next.t("signup:Terms of Use")}
-        open={this.state.isTermsOfUseVisible}
-        width={"55vw"}
-        closable={false}
-        okText={i18next.t("signup:Accept")}
-        cancelText={i18next.t("signup:Decline")}
-        onOk={() => {
-          this.form.current.setFieldsValue({agreement: true});
-          this.setState({
-            isTermsOfUseVisible: false,
-          });
-        }}
-        onCancel={() => {
-          this.form.current.setFieldsValue({agreement: false});
-          this.setState({
-            isTermsOfUseVisible: false,
-          });
-          this.props.history.goBack();
-        }}
-      >
-        <iframe title={"terms"} style={{border: 0, width: "100%", height: "60vh"}} srcDoc={this.state.termsOfUseContent} />
-      </Modal>
+      Setting.renderModal(this.state.isTermsOfUseVisible, () => {
+        this.form.current.setFieldsValue({agreement: true});
+        this.setState({
+          isTermsOfUseVisible: false,
+        });
+      }, () => {
+        this.form.current.setFieldsValue({agreement: false});
+        this.setState({
+          isTermsOfUseVisible: false,
+        });
+      }, this.state.termsOfUseContent)
     );
   }
 

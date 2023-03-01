@@ -14,7 +14,7 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Result, Switch, Table, Upload} from "antd";
+import {Button, Popconfirm, Switch, Table, Upload} from "antd";
 import {UploadOutlined} from "@ant-design/icons";
 import moment from "moment";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
@@ -26,20 +26,13 @@ import BaseListPage from "./BaseListPage";
 class UserListPage extends BaseListPage {
   constructor(props) {
     super(props);
-    this.state = {
-      classes: props,
-      organizationName: props.match.params.organizationName,
+  }
+
+  componentDidMount() {
+    this.setState({
+      organizationName: this.props.match.params.organizationName,
       organization: null,
-      data: [],
-      pagination: {
-        current: 1,
-        pageSize: 10,
-      },
-      loading: false,
-      searchText: "",
-      searchedColumn: "",
-      isAuthorized: true,
-    };
+    });
   }
 
   newUser() {
@@ -56,6 +49,7 @@ class UserListPage extends BaseListPage {
       avatar: `${Setting.StaticBaseUrl}/img/casbin.svg`,
       email: `${randomName}@example.com`,
       phone: Setting.getRandomNumber(),
+      countryCode: this.state.organization.countryCodes?.length > 0 ? this.state.organization.countryCodes[0] : "",
       address: [],
       affiliation: "Example Inc.",
       tag: "staff",
@@ -142,13 +136,6 @@ class UserListPage extends BaseListPage {
   }
 
   renderTable(users) {
-    // transfer country code to name based on selected language
-    const countries = require("i18n-iso-countries");
-    countries.registerLocale(require("i18n-iso-countries/langs/" + i18next.language + ".json"));
-    for (const index in users) {
-      users[index].region = countries.getName(users[index].region, i18next.language, {select: "official"});
-    }
-
     const columns = [
       {
         title: i18next.t("general:Organization"),
@@ -274,6 +261,9 @@ class UserListPage extends BaseListPage {
         width: "140px",
         sorter: true,
         ...this.getColumnSearchProps("region"),
+        render: (text, record, index) => {
+          return Setting.initCountries().getName(record.region, Setting.getLanguage(), {select: "official"});
+        },
       },
       {
         title: i18next.t("user:Tag"),
@@ -371,17 +361,6 @@ class UserListPage extends BaseListPage {
       showTotal: () => i18next.t("general:{total} in total").replace("{total}", this.state.pagination.total),
     };
 
-    if (!this.state.isAuthorized) {
-      return (
-        <Result
-          status="403"
-          title="403 Unauthorized"
-          subTitle={i18next.t("general:Sorry, you do not have permission to access this page or logged in status invalid.")}
-          extra={<a href="/"><Button type="primary">{i18next.t("general:Back Home")}</Button></a>}
-        />
-      );
-    }
-
     return (
       <div>
         <Table scroll={{x: "max-content"}} columns={columns} dataSource={users} rowKey={(record) => `${record.owner}/${record.name}`} size="middle" bordered pagination={paginationProps}
@@ -425,7 +404,7 @@ class UserListPage extends BaseListPage {
               this.getOrganization(users[0].owner);
             }
           } else {
-            if (res.msg.includes("Unauthorized")) {
+            if (Setting.isResponseDenied(res)) {
               this.setState({
                 loading: false,
                 isAuthorized: false,
@@ -453,7 +432,7 @@ class UserListPage extends BaseListPage {
               this.getOrganization(users[0].owner);
             }
           } else {
-            if (res.msg.includes("Unauthorized")) {
+            if (Setting.isResponseDenied(res)) {
               this.setState({
                 loading: false,
                 isAuthorized: false,

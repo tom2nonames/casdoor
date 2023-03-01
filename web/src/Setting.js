@@ -14,7 +14,7 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Tag, Tooltip, message, theme} from "antd";
+import {Checkbox, Form, Modal, Tag, Tooltip, message, theme} from "antd";
 import {QuestionCircleTwoTone} from "@ant-design/icons";
 import {isMobile as isMobileDevice} from "react-device-detect";
 import "./i18n";
@@ -23,6 +23,7 @@ import copy from "copy-to-clipboard";
 import {authConfig} from "./auth/Auth";
 import {Helmet} from "react-helmet";
 import * as Conf from "./Conf";
+import * as phoneNumber from "libphonenumber-js";
 import * as path from "path-browserify";
 
 export const ServerUrl = "";
@@ -30,25 +31,47 @@ export const ServerUrl = "";
 // export const StaticBaseUrl = "https://cdn.jsdelivr.net/gh/casbin/static";
 export const StaticBaseUrl = "https://cdn.casbin.org";
 
-// https://catamphetamine.gitlab.io/country-flag-icons/3x2/index.html
-export const CountryRegionData = getCountryRegionData();
-
 export const Countries = [{label: "English", key: "en", country: "US", alt: "English"},
-  {label: "简体中文", key: "zh", country: "CN", alt: "简体中文"},
+  {label: "中文", key: "zh", country: "CN", alt: "中文"},
   {label: "Español", key: "es", country: "ES", alt: "Español"},
   {label: "Français", key: "fr", country: "FR", alt: "Français"},
   {label: "Deutsch", key: "de", country: "DE", alt: "Deutsch"},
   {label: "日本語", key: "ja", country: "JP", alt: "日本語"},
   {label: "한국어", key: "ko", country: "KR", alt: "한국어"},
   {label: "Русский", key: "ru", country: "RU", alt: "Русский"},
+  {label: "TiếngViệt", key: "vi", country: "VI", alt: "TiếngViệt"},
 ];
 
-const {defaultAlgorithm, darkAlgorithm, compactAlgorithm} = theme;
+export function getThemeData(organization, application) {
+  if (application?.themeData?.isEnabled) {
+    return application.themeData;
+  } else if (organization?.themeData?.isEnabled) {
+    return organization.themeData;
+  } else {
+    return Conf.ThemeDefault;
+  }
+}
 
-export const Themes = [{label: i18next.t("general:Dark"), key: "Dark", style: darkAlgorithm, selectThemeLogo: `${StaticBaseUrl}/img/dark.svg`},
-  {label: i18next.t("general:Compact"), key: "Compact", style: compactAlgorithm, selectThemeLogo: `${StaticBaseUrl}/img/compact.svg`},
-  {label: i18next.t("general:Default"), key: "Default", style: defaultAlgorithm, selectThemeLogo: `${StaticBaseUrl}/img/light.svg`},
-];
+export function getAlgorithm(themeAlgorithmNames) {
+  return themeAlgorithmNames.map((algorithmName) => {
+    if (algorithmName === "dark") {
+      return theme.darkAlgorithm;
+    }
+    if (algorithmName === "compact") {
+      return theme.compactAlgorithm;
+    }
+    return theme.defaultAlgorithm;
+  });
+}
+
+export function getAlgorithmNames(themeData) {
+  const algorithms = [themeData?.themeType !== "dark" ? "default" : "dark"];
+  if (themeData?.isCompact === true) {
+    algorithms.push("compact");
+  }
+
+  return algorithms;
+}
 
 export const OtherProviderInfo = {
   SMS: {
@@ -83,8 +106,16 @@ export const OtherProviderInfo = {
   },
   Email: {
     "Default": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
+      logo: `${StaticBaseUrl}/img/email_default.png`,
       url: "",
+    },
+    "SUBMAIL": {
+      logo: `${StaticBaseUrl}/img/social_submail.svg`,
+      url: "https://www.mysubmail.com",
+    },
+    "Mailtrap": {
+      logo: `${StaticBaseUrl}/img/email_mailtrap.png`,
+      url: "https://mailtrap.io",
     },
   },
   Storage: {
@@ -143,7 +174,7 @@ export const OtherProviderInfo = {
   },
   Captcha: {
     "Default": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
+      logo: `${StaticBaseUrl}/img/captcha_default.png`,
       url: "https://pkg.go.dev/github.com/dchest/captcha",
     },
     "reCAPTCHA": {
@@ -169,18 +200,31 @@ export const OtherProviderInfo = {
   },
 };
 
-export function getCountryRegionData() {
-  let language = i18next.language;
-  if (language === null || language === "null") {
-    language = Conf.DefaultLanguage;
-  }
-
+export function initCountries() {
   const countries = require("i18n-iso-countries");
-  countries.registerLocale(require("i18n-iso-countries/langs/" + language + ".json"));
-  const data = countries.getNames(language, {select: "official"});
-  const result = [];
-  for (const i in data) {result.push({code: i, name: data[i]});}
-  return result;
+  countries.registerLocale(require("i18n-iso-countries/langs/" + getLanguage() + ".json"));
+  return countries;
+}
+
+export function getCountriesData(countryCodes = phoneNumber.getCountries()) {
+  return countryCodes?.map((countryCode) => {
+    if (phoneNumber.isSupportedCountry(countryCode)) {
+      const name = initCountries().getName(countryCode, getLanguage());
+      return {
+        code: countryCode,
+        name: name || "",
+        phone: phoneNumber.getCountryCallingCode(countryCode),
+      };
+    }
+  });
+}
+
+export function countryFlag(country) {
+  return <img src={`${StaticBaseUrl}/flag-icons/${country.code}.svg`} alt={country.name} height={20} style={{marginRight: 10}} />;
+}
+
+export function getPhoneCodeFromCountryCode(countryCode) {
+  return phoneNumber.isSupportedCountry(countryCode) ? phoneNumber.getCountryCallingCode(countryCode) : "";
 }
 
 export function initServerUrl() {
@@ -217,6 +261,13 @@ export function isProviderVisible(providerItem) {
   }
 
   return true;
+}
+
+export function isResponseDenied(data) {
+  if (data.msg === "Unauthorized operation" || data.msg === "未授权的操作") {
+    return true;
+  }
+  return false;
 }
 
 export function isProviderVisibleForSignUp(providerItem) {
@@ -280,16 +331,14 @@ export function isValidEmail(email) {
   return emailRegex.test(email);
 }
 
-export function isValidPhone(phone) {
-  return phone !== "";
+export function isValidPhone(phone, countryCode = "") {
+  if (countryCode !== "") {
+    return phoneNumber.isValidPhoneNumber(phone, countryCode);
+  }
 
-  // if (phone === "") {
-  //   return false;
-  // }
-  //
   // // https://learnku.com/articles/31543, `^s*$` filter empty email individually.
-  // const phoneRegex = /^\s*$|^1(3\d|4[5-9]|5[0-35-9]|6[2567]|7[0-8]|8\d|9[0-35-9])\d{8}$/;
-  // return phoneRegex.test(phone);
+  const phoneRegex = /[0-9]{4,15}$/;
+  return phoneRegex.test(phone);
 }
 
 export function isValidInvoiceTitle(invoiceTitle) {
@@ -509,6 +558,76 @@ export function isMobile() {
   return isMobileDevice;
 }
 
+export function getTermsOfUseContent(url, setTermsOfUseContent) {
+  fetch(url, {
+    method: "GET",
+  }).then(r => {
+    r.text().then(setTermsOfUseContent);
+  });
+}
+
+export function isAgreementRequired(application) {
+  if (application) {
+    const agreementItem = application.signupItems.find(item => item.name === "Agreement");
+    if (!agreementItem || agreementItem.rule === "None" || !agreementItem.rule) {
+      return false;
+    }
+    if (agreementItem.required) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function isDefaultTrue(application) {
+  const agreementItem = application.signupItems.find(item => item.name === "Agreement");
+
+  return isAgreementRequired(application) && agreementItem.rule === "Signin (Default True)";
+}
+
+export function renderAgreement(required, onClick, noStyle, layout, initialValue) {
+  return (
+    <Form.Item
+      name="agreement"
+      key="agreement"
+      valuePropName="checked"
+      rules={[
+        {
+          required: required,
+          message: i18next.t("signup:Please accept the agreement!"),
+        },
+      ]}
+      {...layout}
+      noStyle={noStyle}
+      initialValue={initialValue}
+    >
+      <Checkbox style={{float: "left"}}>
+        {i18next.t("signup:Accept")}&nbsp;
+        <a onClick={onClick}>
+          {i18next.t("signup:Terms of Use")}
+        </a>
+      </Checkbox>
+    </Form.Item>
+  );
+}
+
+export function renderModal(isOpen, onOk, onCancel, doc) {
+  return (
+    <Modal
+      title={i18next.t("signup:Terms of Use")}
+      open={isOpen}
+      width={"55vw"}
+      closable={false}
+      okText={i18next.t("signup:Accept")}
+      cancelText={i18next.t("signup:Decline")}
+      onOk={onOk}
+      onCancel={onCancel}
+    >
+      <iframe title={"terms"} style={{border: 0, width: "100%", height: "60vh"}} srcDoc={doc} />
+    </Modal>
+  );
+}
+
 export function getFormattedDate(date) {
   if (date === undefined) {
     return null;
@@ -593,18 +712,17 @@ export function getLanguageText(text) {
 }
 
 export function getLanguage() {
-  return i18next.language;
+  return i18next.language ?? Conf.DefaultLanguage;
 }
 
 export function setLanguage(language) {
   localStorage.setItem("language", language);
-  changeMomentLanguage(language);
   i18next.changeLanguage(language);
 }
 
 export function setTheme(themeKey) {
   localStorage.setItem("theme", themeKey);
-  dispatchEvent(new Event("themeChange"));
+  dispatchEvent(new Event("changeTheme"));
 }
 
 export function getAcceptLanguage() {
@@ -612,29 +730,6 @@ export function getAcceptLanguage() {
     return "en;q=0.9,en;q=0.8";
   }
   return i18next.language + ";q=0.9,en;q=0.8";
-}
-
-export function changeMomentLanguage(language) {
-  // if (language === "zh") {
-  //   moment.locale("zh", {
-  //     relativeTime: {
-  //       future: "%s内",
-  //       past: "%s前",
-  //       s: "几秒",
-  //       ss: "%d秒",
-  //       m: "1分钟",
-  //       mm: "%d分钟",
-  //       h: "1小时",
-  //       hh: "%d小时",
-  //       d: "1天",
-  //       dd: "%d天",
-  //       M: "1个月",
-  //       MM: "%d个月",
-  //       y: "1年",
-  //       yy: "%d年",
-  //     },
-  //   });
-  // }
 }
 
 export function getClickable(text) {
@@ -702,6 +797,54 @@ export function getProviderTypeOptions(category) {
         {id: "Okta", name: "Okta"},
         {id: "Douyin", name: "Douyin"},
         {id: "Line", name: "Line"},
+        {id: "Amazon", name: "Amazon"},
+        {id: "Auth0", name: "Auth0"},
+        {id: "BattleNet", name: "Battle.net"},
+        {id: "Bitbucket", name: "Bitbucket"},
+        {id: "Box", name: "Box"},
+        {id: "CloudFoundry", name: "Cloud Foundry"},
+        {id: "Dailymotion", name: "Dailymotion"},
+        {id: "Deezer", name: "Deezer"},
+        {id: "DigitalOcean", name: "DigitalOcean"},
+        {id: "Discord", name: "Discord"},
+        {id: "Dropbox", name: "Dropbox"},
+        {id: "EveOnline", name: "Eve Online"},
+        {id: "Fitbit", name: "Fitbit"},
+        {id: "Gitea", name: "Gitea"},
+        {id: "Heroku", name: "Heroku"},
+        {id: "InfluxCloud", name: "InfluxCloud"},
+        {id: "Instagram", name: "Instagram"},
+        {id: "Intercom", name: "Intercom"},
+        {id: "Kakao", name: "Kakao"},
+        {id: "Lastfm", name: "Lastfm"},
+        {id: "Mailru", name: "Mailru"},
+        {id: "Meetup", name: "Meetup"},
+        {id: "MicrosoftOnline", name: "MicrosoftOnline"},
+        {id: "Naver", name: "Naver"},
+        {id: "Nextcloud", name: "Nextcloud"},
+        {id: "OneDrive", name: "OneDrive"},
+        {id: "Oura", name: "Oura"},
+        {id: "Patreon", name: "Patreon"},
+        {id: "Paypal", name: "Paypal"},
+        {id: "SalesForce", name: "SalesForce"},
+        {id: "Shopify", name: "Shopify"},
+        {id: "Soundcloud", name: "Soundcloud"},
+        {id: "Spotify", name: "Spotify"},
+        {id: "Strava", name: "Strava"},
+        {id: "Stripe", name: "Stripe"},
+        {id: "TikTok", name: "TikTok"},
+        {id: "Tumblr", name: "Tumblr"},
+        {id: "Twitch", name: "Twitch"},
+        {id: "Twitter", name: "Twitter"},
+        {id: "Typetalk", name: "Typetalk"},
+        {id: "Uber", name: "Uber"},
+        {id: "VK", name: "VK"},
+        {id: "Wepay", name: "Wepay"},
+        {id: "Xero", name: "Xero"},
+        {id: "Yahoo", name: "Yahoo"},
+        {id: "Yammer", name: "Yammer"},
+        {id: "Yandex", name: "Yandex"},
+        {id: "Zoom", name: "Zoom"},
         {id: "Custom", name: "Custom"},
       ]
     );
@@ -710,6 +853,7 @@ export function getProviderTypeOptions(category) {
       [
         {id: "Default", name: "Default"},
         {id: "SUBMAIL", name: "SUBMAIL"},
+        {id: "Mailtrap", name: "Mailtrap"},
       ]
     );
   } else if (category === "SMS") {

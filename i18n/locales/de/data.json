@@ -8,11 +8,7 @@
     "Please sign out first before signing up": "Please sign out first before signing up",
     "The application does not allow to sign up new account": "The application does not allow to sign up new account"
   },
-  "application": {
-    "Parameter organization is missing": "Parameter organization is missing"
-  },
   "auth": {
-    "%s No phone prefix": "%s No phone prefix",
     "Challenge method should be S256": "Challenge method should be S256",
     "Failed to create user, user information is invalid: %s": "Failed to create user, user information is invalid: %s",
     "Failed to login in: %s": "Failed to login in: %s",
@@ -58,18 +54,20 @@
     "Username cannot contain white spaces": "Username cannot contain white spaces",
     "Username cannot start with a digit": "Username cannot start with a digit",
     "Username is too long (maximum is 39 characters).": "Username is too long (maximum is 39 characters).",
-    "Username must have at least 2 characters": "Username must have at least 2 characters",
+    "Username must have at least 2 characters": "Benutzername muss mindestens 2 Zeichen lang sein",
     "You have entered the wrong password or code too many times, please wait for %d minutes and try again": "You have entered the wrong password or code too many times, please wait for %d minutes and try again",
+    "Your region is not allow to signup by phone": "Your region is not allow to signup by phone",
     "password or code is incorrect, you have %d remaining chances": "password or code is incorrect, you have %d remaining chances",
     "unsupported password type: %s": "unsupported password type: %s"
   },
   "general": {
+    "Missing parameter": "Missing parameter",
     "Please login first": "Please login first",
-    "The user: %s doesn't exist": "The user: %s doesn't exist"
+    "The user: %s doesn't exist": "The user: %s doesn't exist",
+    "don't support captchaProvider: ": "don't support captchaProvider: "
   },
   "ldap": {
-    "Ldap server exist": "Ldap server exist",
-    "Missing parameter": "Missing parameter"
+    "Ldap server exist": "Ldap server exist"
   },
   "link": {
     "Please link first": "Please link first",
@@ -112,7 +110,8 @@
     "Grant_type: %s is not supported in this application": "Grant_type: %s is not supported in this application",
     "Invalid application or wrong clientSecret": "Invalid application or wrong clientSecret",
     "Invalid client_id": "Invalid client_id",
-    "Redirect URI: %s doesn't exist in the allowed Redirect URI list": "Redirect URI: %s doesn't exist in the allowed Redirect URI list"
+    "Redirect URI: %s doesn't exist in the allowed Redirect URI list": "Redirect URI: %s doesn't exist in the allowed Redirect URI list",
+    "Token not found, invalid accessToken": "Token not found, invalid accessToken"
   },
   "user": {
     "Display name cannot be empty": "Display name cannot be empty",
@@ -131,9 +130,8 @@
     "Code has not been sent yet!": "Code has not been sent yet!",
     "Email is invalid": "Email is invalid",
     "Invalid captcha provider.": "Invalid captcha provider.",
-    "Missing parameter": "Missing parameter",
     "Organization does not exist": "Organization does not exist",
-    "Phone number is invalid": "Phone number is invalid",
+    "Phone number is invalid in your region %s": "Phone number is invalid in your region %s",
     "Turing test failed.": "Turing test failed.",
     "Unable to get the email modify rule.": "Unable to get the email modify rule.",
     "Unable to get the phone modify rule.": "Unable to get the phone modify rule.",

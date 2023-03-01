@@ -9,14 +9,14 @@ require (
 	github.com/beego/beego v1.12.11
 	github.com/beevik/etree v1.1.0
 	github.com/casbin/casbin/v2 v2.30.1
-	github.com/casbin/xorm-adapter/v3 v3.0.1
-	github.com/casdoor/go-sms-sender v0.5.1
+	github.com/casdoor/go-sms-sender v0.5.2
+	github.com/casdoor/gomail/v2 v2.0.1
 	github.com/casdoor/oss v1.2.0
+	github.com/casdoor/xorm-adapter/v3 v3.0.4
 	github.com/dchest/captcha v0.0.0-20200903113550-03f5f0333e1f
-	github.com/denisenkom/go-mssqldb v0.0.0-20200428022330-06a60b6afbbc
+	github.com/denisenkom/go-mssqldb v0.9.0
 	github.com/duo-labs/webauthn v0.0.0-20211221191814-a22482edaa3b
 	github.com/forestmgy/ldapserver v1.1.0
-	github.com/go-gomail/gomail v0.0.0-20160411212932-81ebce5c23df
 	github.com/go-ldap/ldap/v3 v3.3.0
 	github.com/go-pay/gopay v1.5.72
 	github.com/go-sql-driver/mysql v1.5.0
@@ -30,6 +30,7 @@ require (
 	github.com/lor00x/goldap v0.0.0-20180618054307-a546dffdd1a3
 	github.com/markbates/goth v1.75.2
 	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
+	github.com/nyaruka/phonenumbers v1.1.5
 	github.com/qiangmzsx/string-adapter/v2 v2.1.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/russellhaering/gosaml2 v0.6.0
@@ -41,17 +42,15 @@ require (
 	github.com/tealeg/xlsx v1.0.5
 	github.com/thanhpk/randstr v1.0.4
 	github.com/tklauser/go-sysconf v0.3.10 // indirect
+	github.com/xorm-io/core v0.7.4
+	github.com/xorm-io/xorm v1.1.6
 	github.com/yusufpapurcu/wmi v1.2.2 // indirect
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd
 	golang.org/x/oauth2 v0.0.0-20210628180205-a41e5a781914
 	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
-	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
-	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/square/go-jose.v2 v2.6.0
 	gopkg.in/yaml.v2 v2.3.0 // indirect
-	xorm.io/builder v0.3.12 // indirect
-	xorm.io/core v0.7.2
-	xorm.io/xorm v1.0.5
+	modernc.org/sqlite v1.10.1-0.20210314190707-798bbeb9bb84
 )

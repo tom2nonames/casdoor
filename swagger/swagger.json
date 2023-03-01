@@ -275,6 +275,34 @@
                 }
             }
         },
+        "/api/add-record": {
+            "post": {
+                "tags": [
+                    "Record API"
+                ],
+                "description": "add a record",
+                "operationId": "ApiController.AddRecord",
+                "parameters": [
+                    {
+                        "in": "body",
+                        "name": "body",
+                        "description": "The details of the record",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/object.Record"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/add-resource": {
             "post": {
                 "tags": [
@@ -431,6 +459,14 @@
                 "operationId": "ApiController.GetCaptcha"
             }
         },
+        "/api/api/get-webhook-event": {
+            "get": {
+                "tags": [
+                    "GetWebhookEventType API"
+                ],
+                "operationId": "ApiController.GetWebhookEventType"
+            }
+        },
         "/api/api/reset-email-or-phone": {
             "post": {
                 "tags": [
@@ -523,6 +559,14 @@
                 }
             }
         },
+        "/api/api/webhook": {
+            "post": {
+                "tags": [
+                    "HandleOfficialAccountEvent API"
+                ],
+                "operationId": "ApiController.HandleOfficialAccountEvent"
+            }
+        },
         "/api/buy-product": {
             "post": {
                 "tags": [
@@ -534,7 +578,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the product",
+                        "description": "The id ( owner/name ) of the product",
                         "required": true,
                         "type": "string"
                     },
@@ -840,6 +884,35 @@
                 }
             }
         },
+        "/api/delete-session": {
+            "post": {
+                "tags": [
+                    "Session API"
+                ],
+                "description": "Delete session by userId",
+                "operationId": "ApiController.DeleteSession",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id",
+                        "description": "The id ( owner/name )(owner/name) of user.",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/delete-syncer": {
             "post": {
                 "tags": [
@@ -1034,7 +1107,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the application.",
+                        "description": "The id ( owner/name ) of the application.",
                         "required": true,
                         "type": "string"
                     }
@@ -1089,7 +1162,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the cert",
+                        "description": "The id ( owner/name ) of the cert",
                         "required": true,
                         "type": "string"
                     }
@@ -1133,6 +1206,32 @@
                 }
             }
         },
+        "/api/get-default-application": {
+            "get": {
+                "tags": [
+                    "Organization API"
+                ],
+                "description": "get default application",
+                "operationId": "ApiController.GetDefaultApplication",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id",
+                        "description": "organization id",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "$ref": "#/definitions/Response"
+                        }
+                    }
+                }
+            }
+        },
         "/api/get-email-and-phone": {
             "post": {
                 "tags": [
@@ -1161,6 +1260,26 @@
                         "description": "The Response object",
                         "schema": {
                             "$ref": "#/definitions/controllers.Response"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/get-global-providers": {
+            "get": {
+                "tags": [
+                    "Provider API"
+                ],
+                "description": "get Global providers",
+                "operationId": "ApiController.GetGlobalProviders",
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/object.Provider"
+                            }
                         }
                     }
                 }
@@ -1221,7 +1340,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the model",
+                        "description": "The id ( owner/name ) of the model",
                         "required": true,
                         "type": "string"
                     }
@@ -1360,7 +1479,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the payment",
+                        "description": "The id ( owner/name ) of the payment",
                         "required": true,
                         "type": "string"
                     }
@@ -1415,7 +1534,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the permission",
+                        "description": "The id ( owner/name ) of the permission",
                         "required": true,
                         "type": "string"
                     }
@@ -1459,6 +1578,55 @@
                 }
             }
         },
+        "/api/get-permissions-by-role": {
+            "get": {
+                "tags": [
+                    "Permission API"
+                ],
+                "description": "get permissions by role",
+                "operationId": "ApiController.GetPermissionsByRole",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id",
+                        "description": "The id ( owner/name ) of the role",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/object.Permission"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/get-permissions-by-submitter": {
+            "get": {
+                "tags": [
+                    "Permission API"
+                ],
+                "description": "get permissions by submitter",
+                "operationId": "ApiController.GetPermissionsBySubmitter",
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/object.Permission"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/get-product": {
             "get": {
                 "tags": [
@@ -1470,7 +1638,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the product",
+                        "description": "The id ( owner/name ) of the product",
                         "required": true,
                         "type": "string"
                     }
@@ -1525,7 +1693,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the provider",
+                        "description": "The id ( owner/name ) of the provider",
                         "required": true,
                         "type": "string"
                     }
@@ -1631,6 +1799,20 @@
                 }
             }
         },
+        "/api/get-release": {
+            "get": {
+                "tags": [
+                    "System API"
+                ],
+                "description": "get local github repo's latest release version info",
+                "operationId": "ApiController.GitRepoVersion",
+                "responses": {
+                    "200": {
+                        "description": "{string} local latest version hash of casdoor"
+                    }
+                }
+            }
+        },
         "/api/get-resource": {
             "get": {
                 "tags": [
@@ -1658,7 +1840,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the role",
+                        "description": "The id ( owner/name ) of the role",
                         "required": true,
                         "type": "string"
                     }
@@ -1696,6 +1878,35 @@
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/object.Role"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/get-sessions": {
+            "get": {
+                "tags": [
+                    "Session API"
+                ],
+                "description": "Get organization user sessions",
+                "operationId": "ApiController.GetSessions",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "owner",
+                        "description": "The organization name",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
                             }
                         }
                     }
@@ -1755,7 +1966,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the syncer",
+                        "description": "The id ( owner/name ) of the syncer",
                         "required": true,
                         "type": "string"
                     }
@@ -1799,6 +2010,32 @@
                 }
             }
         },
+        "/api/get-system-info": {
+            "get": {
+                "tags": [
+                    "System API"
+                ],
+                "description": "get user's system info",
+                "operationId": "ApiController.GetSystemInfo",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id",
+                        "description": "The id ( owner/name ) of the user",
+                        "required": true,
+                        "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "The Response object",
+                        "schema": {
+                            "$ref": "#/definitions/object.SystemInfo"
+                        }
+                    }
+                }
+            }
+        },
         "/api/get-token": {
             "get": {
                 "tags": [
@@ -1810,7 +2047,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of token",
+                        "description": "The id ( owner/name ) of token",
                         "required": true,
                         "type": "string"
                     }
@@ -1879,7 +2116,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the user",
+                        "description": "The id ( owner/name ) of the user",
                         "required": true,
                         "type": "string"
                     },
@@ -1923,7 +2160,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the user",
+                        "description": "The id ( owner/name ) of the user",
                         "required": true,
                         "type": "string"
                     }
@@ -2049,7 +2286,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the webhook",
+                        "description": "The id ( owner/name ) of the webhook",
                         "required": true,
                         "type": "string"
                     }
@@ -2104,7 +2341,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the payment",
+                        "description": "The id ( owner/name ) of the payment",
                         "required": true,
                         "type": "string"
                     }
@@ -2267,8 +2504,8 @@
                 "parameters": [
                     {
                         "in": "query",
-                        "name": "user_id",
-                        "description": "The id of user",
+                        "name": "id",
+                        "description": "The id ( owner/name ) of user",
                         "required": true,
                         "type": "string"
                     },
@@ -2360,45 +2597,6 @@
                 }
             }
         },
-        "/api/login/oauth/logout": {
-            "get": {
-                "tags": [
-                    "Token API"
-                ],
-                "description": "delete token by AccessToken",
-                "operationId": "ApiController.TokenLogout",
-                "parameters": [
-                    {
-                        "in": "query",
-                        "name": "id_token_hint",
-                        "description": "id_token_hint",
-                        "required": true,
-                        "type": "string"
-                    },
-                    {
-                        "in": "query",
-                        "name": "post_logout_redirect_uri",
-                        "description": "post_logout_redirect_uri",
-                        "type": "string"
-                    },
-                    {
-                        "in": "query",
-                        "name": "state",
-                        "description": "state",
-                        "required": true,
-                        "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "The Response object",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.Response"
-                        }
-                    }
-                }
-            }
-        },
         "/api/login/oauth/refresh_token": {
             "post": {
                 "tags": [
@@ -2471,6 +2669,26 @@
                 ],
                 "description": "logout the current user",
                 "operationId": "ApiController.Logout",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id_token_hint",
+                        "description": "id_token_hint",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "post_logout_redirect_uri",
+                        "description": "post_logout_redirect_uri",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "state",
+                        "description": "state",
+                        "type": "string"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "The Response object",
@@ -2486,6 +2704,26 @@
                 ],
                 "description": "logout the current user",
                 "operationId": "ApiController.Logout",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "id_token_hint",
+                        "description": "id_token_hint",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "post_logout_redirect_uri",
+                        "description": "post_logout_redirect_uri",
+                        "type": "string"
+                    },
+                    {
+                        "in": "query",
+                        "name": "state",
+                        "description": "state",
+                        "type": "string"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "The Response object",
@@ -2666,7 +2904,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the application",
+                        "description": "The id ( owner/name ) of the application",
                         "required": true,
                         "type": "string"
                     },
@@ -2701,7 +2939,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the cert",
+                        "description": "The id ( owner/name ) of the cert",
                         "required": true,
                         "type": "string"
                     },
@@ -2744,7 +2982,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the model",
+                        "description": "The id ( owner/name ) of the model",
                         "required": true,
                         "type": "string"
                     },
@@ -2779,7 +3017,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the organization",
+                        "description": "The id ( owner/name ) of the organization",
                         "required": true,
                         "type": "string"
                     },
@@ -2814,7 +3052,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the payment",
+                        "description": "The id ( owner/name ) of the payment",
                         "required": true,
                         "type": "string"
                     },
@@ -2849,7 +3087,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the permission",
+                        "description": "The id ( owner/name ) of the permission",
                         "required": true,
                         "type": "string"
                     },
@@ -2884,7 +3122,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the product",
+                        "description": "The id ( owner/name ) of the product",
                         "required": true,
                         "type": "string"
                     },
@@ -2919,7 +3157,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the provider",
+                        "description": "The id ( owner/name ) of the provider",
                         "required": true,
                         "type": "string"
                     },
@@ -2962,7 +3200,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the role",
+                        "description": "The id ( owner/name ) of the role",
                         "required": true,
                         "type": "string"
                     },
@@ -2997,7 +3235,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the syncer",
+                        "description": "The id ( owner/name ) of the syncer",
                         "required": true,
                         "type": "string"
                     },
@@ -3032,7 +3270,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of token",
+                        "description": "The id ( owner/name ) of token",
                         "required": true,
                         "type": "string"
                     },
@@ -3067,7 +3305,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the user",
+                        "description": "The id ( owner/name ) of the user",
                         "required": true,
                         "type": "string"
                     },
@@ -3102,7 +3340,7 @@
                     {
                         "in": "query",
                         "name": "id",
-                        "description": "The id of the webhook",
+                        "description": "The id ( owner/name ) of the webhook",
                         "required": true,
                         "type": "string"
                     },
@@ -3267,11 +3505,11 @@
         }
     },
     "definitions": {
-        "2200.0xc0003f8480.false": {
+        "2346.0xc0001ce990.false": {
             "title": "false",
             "type": "object"
         },
-        "2235.0xc0003f84b0.false": {
+        "2381.0xc0001ce9c0.false": {
             "title": "false",
             "type": "object"
         },
@@ -3315,6 +3553,15 @@
                 },
                 "autoSignin": {
                     "type": "boolean"
+                },
+                "captchaToken": {
+                    "type": "string"
+                },
+                "captchaType": {
+                    "type": "string"
+                },
+                "clientSecret": {
+                    "type": "string"
                 },
                 "code": {
                     "type": "string"
@@ -3389,10 +3636,10 @@
             "type": "object",
             "properties": {
                 "data": {
-                    "$ref": "#/definitions/2200.0xc0003f8480.false"
+                    "$ref": "#/definitions/2346.0xc0001ce990.false"
                 },
                 "data2": {
-                    "$ref": "#/definitions/2235.0xc0003f84b0.false"
+                    "$ref": "#/definitions/2381.0xc0001ce9c0.false"
                 },
                 "msg": {
                     "type": "string"
@@ -3491,7 +3738,13 @@
                 "displayName": {
                     "type": "string"
                 },
+                "enableAutoSignin": {
+                    "type": "boolean"
+                },
                 "enableCodeSignin": {
+                    "type": "boolean"
+                },
+                "enableLinkWithEmail": {
                     "type": "boolean"
                 },
                 "enablePassword": {
@@ -3514,6 +3767,19 @@
                     "format": "int64"
                 },
                 "forgetUrl": {
+                    "type": "string"
+                },
+                "formBackgroundUrl": {
+                    "type": "string"
+                },
+                "formCss": {
+                    "type": "string"
+                },
+                "formOffset": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "formSideHtml": {
                     "type": "string"
                 },
                 "grantTypes": {
@@ -3556,6 +3822,9 @@
                     "type": "integer",
                     "format": "int64"
                 },
+                "samlReplyUrl": {
+                    "type": "string"
+                },
                 "signinHtml": {
                     "type": "string"
                 },
@@ -3576,6 +3845,9 @@
                 },
                 "termsOfUse": {
                     "type": "string"
+                },
+                "themeData": {
+                    "$ref": "#/definitions/object.ThemeData"
                 },
                 "tokenFormat": {
                     "type": "string"
@@ -3689,6 +3961,24 @@
                 }
             }
         },
+        "object.ManagedAccount": {
+            "title": "ManagedAccount",
+            "type": "object",
+            "properties": {
+                "application": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "signinUrl": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
         "object.Model": {
             "title": "Model",
             "type": "object",
@@ -3725,6 +4015,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "end_session_endpoint": {
+                    "type": "string"
                 },
                 "grant_types_supported": {
                     "type": "array",
@@ -3801,6 +4094,9 @@
                 "createdTime": {
                     "type": "string"
                 },
+                "defaultApplication": {
+                    "type": "string"
+                },
                 "defaultAvatar": {
                     "type": "string"
                 },
@@ -3813,8 +4109,18 @@
                 "favicon": {
                     "type": "string"
                 },
+                "initScore": {
+                    "type": "integer",
+                    "format": "int64"
+                },
                 "isProfilePublic": {
                     "type": "boolean"
+                },
+                "languages": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "masterPassword": {
                     "type": "string"
@@ -3839,6 +4145,9 @@
                     "items": {
                         "type": "string"
                     }
+                },
+                "themeData": {
+                    "$ref": "#/definitions/object.ThemeData"
                 },
                 "websiteUrl": {
                     "type": "string"
@@ -3943,11 +4252,26 @@
                         "type": "string"
                     }
                 },
+                "adapter": {
+                    "type": "string"
+                },
+                "approveTime": {
+                    "type": "string"
+                },
+                "approver": {
+                    "type": "string"
+                },
                 "createdTime": {
                     "type": "string"
                 },
                 "displayName": {
                     "type": "string"
+                },
+                "domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "effect": {
                     "type": "string"
@@ -3979,6 +4303,12 @@
                         "type": "string"
                     }
                 },
+                "state": {
+                    "type": "string"
+                },
+                "submitter": {
+                    "type": "string"
+                },
                 "users": {
                     "type": "array",
                     "items": {
@@ -3995,6 +4325,9 @@
                     "type": "string"
                 },
                 "currency": {
+                    "type": "string"
+                },
+                "description": {
                     "type": "string"
                 },
                 "detail": {
@@ -4015,6 +4348,12 @@
                 "price": {
                     "type": "number",
                     "format": "double"
+                },
+                "providerObjs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/object.Provider"
+                    }
                 },
                 "providers": {
                     "type": "array",
@@ -4090,6 +4429,9 @@
                 "customUserInfoUrl": {
                     "type": "string"
                 },
+                "disableSsl": {
+                    "type": "boolean"
+                },
                 "displayName": {
                     "type": "string"
                 },
@@ -4126,11 +4468,17 @@
                 "owner": {
                     "type": "string"
                 },
+                "pathPrefix": {
+                    "type": "string"
+                },
                 "port": {
                     "type": "integer",
                     "format": "int64"
                 },
                 "providerUrl": {
+                    "type": "string"
+                },
+                "receiver": {
                     "type": "string"
                 },
                 "regionId": {
@@ -4172,11 +4520,17 @@
                 "name": {
                     "type": "string"
                 },
+                "owner": {
+                    "type": "string"
+                },
                 "prompted": {
                     "type": "boolean"
                 },
                 "provider": {
                     "$ref": "#/definitions/object.Provider"
+                },
+                "rule": {
+                    "type": "string"
                 }
             }
         },
@@ -4232,6 +4586,12 @@
                 },
                 "displayName": {
                     "type": "string"
+                },
+                "domains": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "isEnabled": {
                     "type": "boolean"
@@ -4345,6 +4705,10 @@
                 }
             }
         },
+        "object.SystemInfo": {
+            "title": "SystemInfo",
+            "type": "object"
+        },
         "object.TableColumn": {
             "title": "TableColumn",
             "type": "object",
@@ -4366,6 +4730,28 @@
                     "items": {
                         "type": "string"
                     }
+                }
+            }
+        },
+        "object.ThemeData": {
+            "title": "ThemeData",
+            "type": "object",
+            "properties": {
+                "borderRadius": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "colorPrimary": {
+                    "type": "string"
+                },
+                "isCompact": {
+                    "type": "boolean"
+                },
+                "isEnabled": {
+                    "type": "boolean"
+                },
+                "themeType": {
+                    "type": "string"
                 }
             }
         },
@@ -4478,7 +4864,13 @@
                 "alipay": {
                     "type": "string"
                 },
+                "amazon": {
+                    "type": "string"
+                },
                 "apple": {
+                    "type": "string"
+                },
+                "auth0": {
                     "type": "string"
                 },
                 "avatar": {
@@ -4490,6 +4882,9 @@
                 "baidu": {
                     "type": "string"
                 },
+                "battlenet": {
+                    "type": "string"
+                },
                 "bilibili": {
                     "type": "string"
                 },
@@ -4499,7 +4894,16 @@
                 "birthday": {
                     "type": "string"
                 },
+                "bitbucket": {
+                    "type": "string"
+                },
+                "box": {
+                    "type": "string"
+                },
                 "casdoor": {
+                    "type": "string"
+                },
+                "cloudfoundry": {
                     "type": "string"
                 },
                 "createdIp": {
@@ -4511,13 +4915,28 @@
                 "custom": {
                     "type": "string"
                 },
+                "dailymotion": {
+                    "type": "string"
+                },
+                "deezer": {
+                    "type": "string"
+                },
+                "digitalocean": {
+                    "type": "string"
+                },
                 "dingtalk": {
+                    "type": "string"
+                },
+                "discord": {
                     "type": "string"
                 },
                 "displayName": {
                     "type": "string"
                 },
                 "douyin": {
+                    "type": "string"
+                },
+                "dropbox": {
                     "type": "string"
                 },
                 "education": {
@@ -4529,13 +4948,22 @@
                 "emailVerified": {
                     "type": "boolean"
                 },
+                "eveonline": {
+                    "type": "string"
+                },
                 "facebook": {
                     "type": "string"
                 },
                 "firstName": {
                     "type": "string"
                 },
+                "fitbit": {
+                    "type": "string"
+                },
                 "gender": {
+                    "type": "string"
+                },
+                "gitea": {
                     "type": "string"
                 },
                 "gitee": {
@@ -4553,6 +4981,9 @@
                 "hash": {
                     "type": "string"
                 },
+                "heroku": {
+                    "type": "string"
+                },
                 "homepage": {
                     "type": "string"
                 },
@@ -4565,7 +4996,16 @@
                 "idCardType": {
                     "type": "string"
                 },
+                "influxcloud": {
+                    "type": "string"
+                },
                 "infoflow": {
+                    "type": "string"
+                },
+                "instagram": {
+                    "type": "string"
+                },
+                "intercom": {
                     "type": "string"
                 },
                 "isAdmin": {
@@ -4586,6 +5026,9 @@
                 "isOnline": {
                     "type": "boolean"
                 },
+                "kakao": {
+                    "type": "string"
+                },
                 "karma": {
                     "type": "integer",
                     "format": "int64"
@@ -4605,7 +5048,16 @@
                 "lastSigninTime": {
                     "type": "string"
                 },
+                "lastSigninWrongTime": {
+                    "type": "string"
+                },
+                "lastfm": {
+                    "type": "string"
+                },
                 "ldap": {
+                    "type": "string"
+                },
+                "line": {
                     "type": "string"
                 },
                 "linkedin": {
@@ -4614,10 +5066,37 @@
                 "location": {
                     "type": "string"
                 },
+                "mailru": {
+                    "type": "string"
+                },
+                "managedAccounts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/object.ManagedAccount"
+                    }
+                },
+                "meetup": {
+                    "type": "string"
+                },
+                "microsoftonline": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
+                "naver": {
+                    "type": "string"
+                },
+                "nextcloud": {
+                    "type": "string"
+                },
                 "okta": {
+                    "type": "string"
+                },
+                "onedrive": {
+                    "type": "string"
+                },
+                "oura": {
                     "type": "string"
                 },
                 "owner": {
@@ -4627,6 +5106,12 @@
                     "type": "string"
                 },
                 "passwordSalt": {
+                    "type": "string"
+                },
+                "patreon": {
+                    "type": "string"
+                },
+                "paypal": {
                     "type": "string"
                 },
                 "permanentAvatar": {
@@ -4665,7 +5150,17 @@
                         "$ref": "#/definitions/object.Role"
                     }
                 },
+                "salesforce": {
+                    "type": "string"
+                },
                 "score": {
+                    "type": "integer",
+                    "format": "int64"
+                },
+                "shopify": {
+                    "type": "string"
+                },
+                "signinWrongTimes": {
                     "type": "integer",
                     "format": "int64"
                 },
@@ -4675,22 +5170,52 @@
                 "slack": {
                     "type": "string"
                 },
+                "soundcloud": {
+                    "type": "string"
+                },
+                "spotify": {
+                    "type": "string"
+                },
                 "steam": {
+                    "type": "string"
+                },
+                "strava": {
+                    "type": "string"
+                },
+                "stripe": {
                     "type": "string"
                 },
                 "tag": {
                     "type": "string"
                 },
+                "tiktok": {
+                    "type": "string"
+                },
                 "title": {
+                    "type": "string"
+                },
+                "tumblr": {
+                    "type": "string"
+                },
+                "twitch": {
+                    "type": "string"
+                },
+                "twitter": {
                     "type": "string"
                 },
                 "type": {
                     "type": "string"
                 },
-                "unionId": {
+                "typetalk": {
+                    "type": "string"
+                },
+                "uber": {
                     "type": "string"
                 },
                 "updatedTime": {
+                    "type": "string"
+                },
+                "vk": {
                     "type": "string"
                 },
                 "webauthnCredentials": {
@@ -4706,6 +5231,24 @@
                     "type": "string"
                 },
                 "weibo": {
+                    "type": "string"
+                },
+                "wepay": {
+                    "type": "string"
+                },
+                "xero": {
+                    "type": "string"
+                },
+                "yahoo": {
+                    "type": "string"
+                },
+                "yammer": {
+                    "type": "string"
+                },
+                "yandex": {
+                    "type": "string"
+                },
+                "zoom": {
                     "type": "string"
                 }
             }

@@ -42,7 +42,7 @@ func init() {
 	reFieldWhiteList, _ = regexp.Compile(`^[A-Za-z0-9]+$`)
 }
 
-func CheckUserSignup(application *Application, organization *Organization, username string, password string, displayName string, firstName string, lastName string, email string, phone string, affiliation string, lang string) string {
+func CheckUserSignup(application *Application, organization *Organization, username string, password string, displayName string, firstName string, lastName string, email string, phone string, countryCode string, affiliation string, lang string) string {
 	if organization == nil {
 		return i18n.Translate(lang, "check:Organization does not exist")
 	}
@@ -107,7 +107,9 @@ func CheckUserSignup(application *Application, organization *Organization, usern
 
 		if HasUserByField(organization.Name, "phone", phone) {
 			return i18n.Translate(lang, "check:Phone already exists")
-		} else if organization.PhonePrefix == "86" && !util.IsPhoneCnValid(phone) {
+		} else if !util.IsPhoneAllowInRegin(countryCode, organization.CountryCodes) {
+			return i18n.Translate(lang, "check:Your region is not allow to signup by phone")
+		} else if !util.IsPhoneValid(phone, countryCode) {
 			return i18n.Translate(lang, "check:Phone number is invalid")
 		}
 	}
@@ -347,11 +349,10 @@ func CheckUpdateUser(oldUser *User, user *User, lang string) string {
 		return i18n.Translate(lang, "user:Display name cannot be empty")
 	}
 
-	if msg := CheckUsername(user.Name, lang); msg != "" {
-		return msg
-	}
-
 	if oldUser.Name != user.Name {
+		if msg := CheckUsername(user.Name, lang); msg != "" {
+			return msg
+		}
 		if HasUserByField(user.Owner, "name", user.Name) {
 			return i18n.Translate(lang, "check:Username already exists")
 		}
