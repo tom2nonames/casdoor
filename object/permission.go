@@ -432,27 +432,58 @@ func AddPermission(permission *Permission) bool {
 	return affected != 0
 }
 
+//func DeletePermission(permission *Permission) bool {
+//	affected, err := adapter.Engine.ID(core.PK{permission.Owner, permission.Name}).Delete(&Permission{})
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	if affected != 0 {
+//		removeGroupingPolicies(permission)
+//		removePolicies(permission)
+//		if permission.Adapter != "" && permission.Adapter != "permission_rule" {
+//			isEmpty, _ := adapter.Engine.IsTableEmpty(permission.Adapter)
+//			if isEmpty {
+//				err = adapter.Engine.DropTables(permission.Adapter)
+//				if err != nil {
+//					panic(err)
+//				}
+//			}
+//		}
+//	}
+//
+//	return affected != 0
+//}
+
 func DeletePermission(permission *Permission) bool {
+
+	enforcer := getEnforcer(permission)
+	index := 1
+	if len(permission.Domains) > 0 {
+		index = 2
+	}
+
+	permissions := GetPermissionsByAdapterAndDomainsAndRole(permission.Adapter, permission.Domains, "")
+	judgeRepeatRole(enforcer, permission.Roles, permission.Domains, index, permissions)
+	//removeGroupingPolicies(permission)
+	removePolicies(permission)
+	if permission.Adapter != "" && permission.Adapter != "permission_rule" {
+		isEmpty, _ := adapter.Engine.IsTableEmpty(permission.Adapter)
+		if isEmpty {
+			err := adapter.Engine.DropTables(permission.Adapter)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+
 	affected, err := adapter.Engine.ID(core.PK{permission.Owner, permission.Name}).Delete(&Permission{})
 	if err != nil {
 		panic(err)
 	}
 
-	if affected != 0 {
-		removeGroupingPolicies(permission)
-		removePolicies(permission)
-		if permission.Adapter != "" && permission.Adapter != "permission_rule" {
-			isEmpty, _ := adapter.Engine.IsTableEmpty(permission.Adapter)
-			if isEmpty {
-				err = adapter.Engine.DropTables(permission.Adapter)
-				if err != nil {
-					panic(err)
-				}
-			}
-		}
-	}
-
 	return affected != 0
+
 }
 
 func GetPermissionsByUser(userId string) []*Permission {
