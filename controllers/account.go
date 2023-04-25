@@ -17,6 +17,7 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/beego/beego"
 	"net/http"
 	"strconv"
 	"strings"
@@ -269,10 +270,10 @@ func (c *ApiController) Logout() {
 		c.ResponseOk(user, application.HomepageUrl)
 		return
 	} else {
-		if redirectUri == "" {
-			c.ResponseError(c.T("general:Missing parameter") + ": post_logout_redirect_uri")
-			return
-		}
+		//if redirectUri == "" {
+		//	c.ResponseError(c.T("general:Missing parameter") + ": post_logout_redirect_uri")
+		//	return
+		//}
 		if accessToken == "" {
 			c.ResponseError(c.T("general:Missing parameter") + ": id_token_hint")
 			return
@@ -289,19 +290,42 @@ func (c *ApiController) Logout() {
 			return
 		}
 
-		if application.IsRedirectUriValid(redirectUri) {
-			if user == "" {
-				user = util.GetId(token.Organization, token.User)
+		token = object.GetTokenByAccessToken(accessToken)
+		application = object.GetApplication(token.Owner + "/" + token.Application)
+		cert := object.GetCert("admin/" + application.Cert)
+		claims, err := object.ParseJwtToken(accessToken, cert)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		if beego.GlobalSessions.GetProvider().SessionExist(claims.SessionID) {
+			store, _ := beego.GlobalSessions.GetProvider().SessionRead(claims.SessionID)
+			store.Delete("username")
+			store.Delete("SessionData")
+			store.Flush()
+			beego.GlobalSessions.GetProvider().SessionDestroy(claims.SessionID)
+			//fmt.Println(claims.SessionID, "claims.SessionID+++++++++++++++========")
+		}
+
+		if redirectUri != "" {
+			if application.IsRedirectUriValid(redirectUri) {
+				if user == "" {
+					user = util.GetId(token.Organization, token.User)
+				}
+
+				c.ClearUserSession()
+				// TODO https://github.com/casdoor/casdoor/pull/1494#discussion_r1095675265
+				object.DeleteSessionId(util.GetSessionId(object.CasdoorOrganization, object.CasdoorApplication, user), c.Ctx.Input.CruSession.SessionID())
+				util.LogInfo(c.Ctx, "API: [%s] logged out", user)
+
+				c.Ctx.Redirect(http.StatusFound, fmt.Sprintf("%s?state=%s", strings.TrimRight(redirectUri, "/"), state))
+			} else {
+				c.ResponseError(fmt.Sprintf(c.T("token:Redirect URI: %s doesn't exist in the allowed Redirect URI list"), redirectUri))
+				return
 			}
-
-			c.ClearUserSession()
-			// TODO https://github.com/casdoor/casdoor/pull/1494#discussion_r1095675265
-			object.DeleteSessionId(util.GetSessionId(object.CasdoorOrganization, object.CasdoorApplication, user), c.Ctx.Input.CruSession.SessionID())
-			util.LogInfo(c.Ctx, "API: [%s] logged out", user)
-
-			c.Ctx.Redirect(http.StatusFound, fmt.Sprintf("%s?state=%s", strings.TrimRight(redirectUri, "/"), state))
 		} else {
-			c.ResponseError(fmt.Sprintf(c.T("token:Redirect URI: %s doesn't exist in the allowed Redirect URI list"), redirectUri))
+			c.ResponseOk(user)
 			return
 		}
 	}

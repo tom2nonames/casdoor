@@ -137,6 +137,7 @@ func (c *ApiController) DeleteToken() {
 // @Success 200 {object} object.TokenWrapper The Response object
 // @router /login/oauth/code [post]
 func (c *ApiController) GetOAuthCode() {
+	sessionID := c.Ctx.Input.CruSession.SessionID()
 	userId := c.Input().Get("user_id")
 	clientId := c.Input().Get("client_id")
 	responseType := c.Input().Get("response_type")
@@ -154,7 +155,7 @@ func (c *ApiController) GetOAuthCode() {
 	}
 	host := c.Ctx.Request.Host
 
-	c.Data["json"] = object.GetOAuthCode(userId, clientId, responseType, redirectUri, scope, state, nonce, codeChallenge, host, c.GetAcceptLanguage())
+	c.Data["json"] = object.GetOAuthCode(userId, clientId, responseType, redirectUri, scope, state, nonce, codeChallenge, host, c.GetAcceptLanguage(), sessionID)
 	c.ServeJSON()
 }
 
@@ -171,6 +172,7 @@ func (c *ApiController) GetOAuthCode() {
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/access_token [post]
 func (c *ApiController) GetOAuthToken() {
+	sessionID := c.Ctx.Input.CruSession.SessionID()
 	grantType := c.Input().Get("grant_type")
 	refreshToken := c.Input().Get("refresh_token")
 	clientId := c.Input().Get("client_id")
@@ -205,7 +207,7 @@ func (c *ApiController) GetOAuthToken() {
 	}
 	host := c.Ctx.Request.Host
 
-	c.Data["json"] = object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage())
+	c.Data["json"] = object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage(), sessionID)
 	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }
@@ -224,6 +226,7 @@ func (c *ApiController) GetOAuthToken() {
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/refresh_token [post]
 func (c *ApiController) RefreshToken() {
+	sessionID := c.Ctx.Input.CruSession.SessionID()
 	grantType := c.Input().Get("grant_type")
 	refreshToken := c.Input().Get("refresh_token")
 	scope := c.Input().Get("scope")
@@ -243,7 +246,7 @@ func (c *ApiController) RefreshToken() {
 		}
 	}
 
-	c.Data["json"] = object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
+	c.Data["json"] = object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host, sessionID)
 	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }

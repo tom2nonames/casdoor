@@ -24,6 +24,7 @@ import (
 
 type Claims struct {
 	*User
+	SessionID string `json:"session_id,omitempty"`
 	TokenType string `json:"tokenType,omitempty"`
 	Nonce     string `json:"nonce,omitempty"`
 	Tag       string `json:"tag,omitempty"`
@@ -92,6 +93,7 @@ type UserWithoutThirdIdp struct {
 
 type ClaimsShort struct {
 	*UserShort
+	SessionID string `json:"session_id,omitempty"`
 	TokenType string `json:"tokenType,omitempty"`
 	Nonce     string `json:"nonce,omitempty"`
 	Scope     string `json:"scope,omitempty"`
@@ -100,6 +102,7 @@ type ClaimsShort struct {
 
 type ClaimsWithoutThirdIdp struct {
 	*UserWithoutThirdIdp
+	SessionID string `json:"session_id,omitempty"`
 	TokenType string `json:"tokenType,omitempty"`
 	Nonce     string `json:"nonce,omitempty"`
 	Tag       string `json:"tag,omitempty"`
@@ -181,6 +184,7 @@ func getUserWithoutThirdIdp(user *User) *UserWithoutThirdIdp {
 func getShortClaims(claims Claims) ClaimsShort {
 	res := ClaimsShort{
 		UserShort:        getShortUser(claims.User),
+		SessionID:        claims.SessionID,
 		TokenType:        claims.TokenType,
 		Nonce:            claims.Nonce,
 		Scope:            claims.Scope,
@@ -192,6 +196,7 @@ func getShortClaims(claims Claims) ClaimsShort {
 func getClaimsWithoutThirdIdp(claims Claims) ClaimsWithoutThirdIdp {
 	res := ClaimsWithoutThirdIdp{
 		UserWithoutThirdIdp: getUserWithoutThirdIdp(claims.User),
+		SessionID:           claims.SessionID,
 		TokenType:           claims.TokenType,
 		Nonce:               claims.Nonce,
 		Tag:                 claims.Tag,
@@ -220,7 +225,7 @@ func refineUser(user *User) *User {
 	return user
 }
 
-func generateJwtToken(application *Application, user *User, nonce string, scope string, host string) (string, string, string, error) {
+func generateJwtToken(application *Application, user *User, nonce string, scope string, host string, sessionID string) (string, string, string, error) {
 	nowTime := time.Now()
 	expireTime := nowTime.Add(time.Duration(application.ExpireInHours) * time.Hour)
 	refreshExpireTime := nowTime.Add(time.Duration(application.RefreshExpireInHours) * time.Hour)
@@ -234,6 +239,7 @@ func generateJwtToken(application *Application, user *User, nonce string, scope 
 
 	claims := Claims{
 		User:      user,
+		SessionID: sessionID,
 		TokenType: "access-token",
 		Nonce:     nonce,
 		// FIXME: A workaround for custom claim by reusing `tag` in user info
