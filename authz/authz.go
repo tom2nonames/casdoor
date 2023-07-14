@@ -118,6 +118,7 @@ p, *, *, *, /cas, *, *
 p, *, *, *, /api/webauthn, *, *
 p, *, *, GET, /api/get-release, *, *
 p, *, *, GET, /api/get-default-application, *, *
+p, *, *, POST, /api/url-action-authz, *, *
 p, *, *, POST, /api/enforce, *, *
 p, *, *, POST, /api/batch-enforce, *, *
 p, *, *, GET, /api/get-all-objects, *, *

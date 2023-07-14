@@ -185,6 +185,24 @@ func removePolicies(permission *Permission) {
 	}
 }
 
+func UrlActionAuthz(permissionRule *PermissionRule, adapters []string) bool {
+	var permissions []*Permission
+	err := adapter.Engine.In("adapter", adapters).Find(&permissions)
+	if err != nil {
+		panic(err)
+	}
+	for _, p := range permissions {
+		enforcer := getEnforcer(p)
+		request, _ := permissionRule.GetRequest(builtInAdapter, permissionRule.Id)
+		allow, err := enforcer.Enforce(request...)
+		if err != nil {
+			panic(err)
+		}
+		return allow
+	}
+	return false
+}
+
 func Enforce(permissionRule *PermissionRule) bool {
 	permission := GetPermission(permissionRule.Id)
 	enforcer := getEnforcer(permission)

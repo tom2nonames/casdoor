@@ -16,9 +16,27 @@ package controllers
 
 import (
 	"encoding/json"
-
 	"github.com/casdoor/casdoor/object"
 )
+
+type UrlActionAuthzParams struct {
+	object.PermissionRule
+	Adapters []string `json:"adapters"`
+}
+
+func (c *ApiController) UrlActionAuthz() {
+	//var permissionRule object.PermissionRule
+	var urlActionAuthzParams UrlActionAuthzParams
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &urlActionAuthzParams)
+
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = object.UrlActionAuthz(&urlActionAuthzParams.PermissionRule, urlActionAuthzParams.Adapters)
+	c.ServeJSON()
+}
 
 func (c *ApiController) Enforce() {
 	var permissionRule object.PermissionRule
