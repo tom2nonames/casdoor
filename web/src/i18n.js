@@ -13,27 +13,32 @@
 // limitations under the License.
 
 import i18n from "i18next";
-import zh from "./locales/zh/data.json";
 import en from "./locales/en/data.json";
+import zh from "./locales/zh/data.json";
+import es from "./locales/es/data.json";
 import fr from "./locales/fr/data.json";
 import de from "./locales/de/data.json";
+import id from "./locales/id/data.json";
+import ja from "./locales/ja/data.json";
 import ko from "./locales/ko/data.json";
 import ru from "./locales/ru/data.json";
-import ja from "./locales/ja/data.json";
-import es from "./locales/es/data.json";
+import vi from "./locales/vi/data.json";
+import pt from "./locales/pt/data.json";
 import * as Conf from "./Conf";
-import * as Setting from "./Setting";
 import {initReactI18next} from "react-i18next";
 
 const resources = {
   en: en,
-  es: es,
   zh: zh,
+  es: es,
   fr: fr,
   de: de,
+  id: id,
+  ja: ja,
   ko: ko,
   ru: ru,
-  ja: ja,
+  vi: vi,
+  pt: pt,
 };
 
 function initLanguage() {
@@ -44,17 +49,20 @@ function initLanguage() {
     } else {
       const userLanguage = navigator.language;
       switch (userLanguage) {
+      case "en":
+        language = "en";
+        break;
+      case "en-US":
+        language = "en";
+        break;
       case "zh-CN":
         language = "zh";
         break;
       case "zh":
         language = "zh";
         break;
-      case "en":
-        language = "en";
-        break;
-      case "en-US":
-        language = "en";
+      case "es":
+        language = "es";
         break;
       case "fr":
         language = "fr";
@@ -62,21 +70,29 @@ function initLanguage() {
       case "de":
         language = "de";
         break;
+      case "id":
+        language = "id";
+        break;
+      case "ja":
+        language = "ja";
+        break;
       case "ko":
         language = "ko";
         break;
       case "ru":
         language = "ru";
         break;
-      case "ja":
-        language = "ja";
+      case "vi":
+        language = "vi";
+        break;
+      case "pt":
+        language = "pt";
         break;
       default:
         language = Conf.DefaultLanguage;
       }
     }
   }
-  Setting.changeMomentLanguage(language);
 
   return language;
 }

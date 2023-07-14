@@ -13,22 +13,29 @@
 // limitations under the License.
 
 import React from "react";
-import {Button, Card, Col, Input, Result, Row, Select, Spin, Switch} from "antd";
+import {Button, Card, Col, Input, InputNumber, List, Result, Row, Select, Space, Spin, Switch, Tag} from "antd";
+import {withRouter} from "react-router-dom";
+import * as GroupBackend from "./backend/GroupBackend";
 import * as UserBackend from "./backend/UserBackend";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
 import * as Setting from "./Setting";
 import i18next from "i18next";
-import CropperDiv from "./CropperDiv.js";
+import CropperDivModal from "./common/modal/CropperDivModal.js";
 import * as ApplicationBackend from "./backend/ApplicationBackend";
-import PasswordModal from "./PasswordModal";
-import ResetModal from "./ResetModal";
-import AffiliationSelect from "./common/AffiliationSelect";
+import PasswordModal from "./common/modal/PasswordModal";
+import ResetModal from "./common/modal/ResetModal";
+import AffiliationSelect from "./common/select/AffiliationSelect";
 import OAuthWidget from "./common/OAuthWidget";
 import SamlWidget from "./common/SamlWidget";
-import SelectRegionBox from "./SelectRegionBox";
-import WebAuthnCredentialTable from "./WebauthnCredentialTable";
-import ManagedAccountTable from "./ManagedAccountTable";
-import PropertyTable from "./propertyTable";
+import RegionSelect from "./common/select/RegionSelect";
+import WebAuthnCredentialTable from "./table/WebauthnCredentialTable";
+import ManagedAccountTable from "./table/ManagedAccountTable";
+import PropertyTable from "./table/propertyTable";
+import {CountryCodeSelect} from "./common/select/CountryCodeSelect";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
+import {DeleteMfa} from "./backend/MfaBackend";
+import {CheckCircleOutlined, HolderOutlined, UsergroupAddOutlined} from "@ant-design/icons";
+import * as MfaBackend from "./backend/MfaBackend";
 
 const {Option} = Select;
 
@@ -41,11 +48,13 @@ class UserEditPage extends React.Component {
       userName: props.userName !== undefined ? props.userName : props.match.params.userName,
       user: null,
       application: null,
+      groups: null,
       organizations: [],
       applications: [],
       mode: props.location.mode !== undefined ? props.location.mode : "edit",
       loading: true,
       returnUrl: null,
+      idCardInfo: ["ID card front", "ID card back", "ID card with person"],
     };
   }
 
@@ -57,17 +66,40 @@ class UserEditPage extends React.Component {
     this.setReturnUrl();
   }
 
+  componentDidUpdate(prevProps, prevState, snapshot) {
+    if (prevState.application !== this.state.application) {
+      this.getGroups(this.state.organizationName);
+    }
+  }
+
   getUser() {
     UserBackend.getUser(this.state.organizationName, this.state.userName)
       .then((data) => {
+        if (data === null) {
+          this.props.history.push("/404");
+          return;
+        }
+
         if (data.status === null || data.status !== "error") {
           this.setState({
             user: data,
+            multiFactorAuths: data?.multiFactorAuths ?? [],
           });
         }
         this.setState({
           loading: false,
         });
+      });
+  }
+
+  addUserKeys() {
+    UserBackend.addUserKeys(this.state.user)
+      .then((res) => {
+        if (res.status === "ok") {
+          this.getUser();
+        } else {
+          Setting.showMessage("error", res.msg);
+        }
       });
   }
 
@@ -91,11 +123,32 @@ class UserEditPage extends React.Component {
 
   getUserApplication() {
     ApplicationBackend.getUserApplication(this.state.organizationName, this.state.userName)
-      .then((application) => {
+      .then((res) => {
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
         this.setState({
-          application: application,
+          application: res,
+        });
+
+        this.setState({
+          isGroupsVisible: res.organizationObj.accountItems?.some((item) => item.name === "Groups" && item.visible),
         });
       });
+  }
+
+  getGroups(organizationName) {
+    if (this.state.isGroupsVisible) {
+      GroupBackend.getGroups(organizationName)
+        .then((res) => {
+          if (res.status === "ok") {
+            this.setState({
+              groups: res.data,
+            });
+          }
+        });
+    }
   }
 
   setReturnUrl() {
@@ -109,9 +162,9 @@ class UserEditPage extends React.Component {
   }
 
   parseUserField(key, value) {
-    // if ([].includes(key)) {
-    //   value = Setting.myParseInt(value);
-    // }
+    if (["score", "karma", "ranking"].includes(key)) {
+      value = Setting.myParseInt(value);
+    }
     return value;
   }
 
@@ -137,20 +190,57 @@ class UserEditPage extends React.Component {
     return this.isSelf() || Setting.isAdminUser(this.props.account);
   }
 
+  getCountryCode() {
+    return this.props.account.countryCode;
+  }
+
+  loadMore = (table, type) => {
+    return <div
+      style={{
+        textAlign: "center",
+        marginTop: 12,
+        height: 32,
+        lineHeight: "32px",
+      }}
+    >
+      <Button onClick={() => {
+        this.setState({
+          multiFactorAuths: Setting.addRow(table, {"type": type}),
+        });
+      }}>{i18next.t("general:Add")}</Button>
+    </div>;
+  };
+
+  deleteMfa = () => {
+    this.setState({
+      RemoveMfaLoading: true,
+    });
+
+    DeleteMfa({
+      owner: this.state.user.owner,
+      name: this.state.user.name,
+    }).then((res) => {
+      if (res.status === "ok") {
+        Setting.showMessage("success", i18next.t("general:Successfully deleted"));
+        this.setState({
+          multiFactorAuths: res.data,
+        });
+      } else {
+        Setting.showMessage("error", i18next.t("general:Failed to delete"));
+      }
+    }).finally(() => {
+      this.setState({
+        RemoveMfaLoading: false,
+      });
+    });
+  };
+
   renderAccountItem(accountItem) {
     if (!accountItem.visible) {
       return null;
     }
 
     const isAdmin = Setting.isAdminUser(this.props.account);
-
-    // return (
-    //   <div>
-    //     {
-    //       JSON.stringify({accountItem: accountItem, isSelf: isSelf, isAdmin: isAdmin})
-    //     }
-    //   </div>
-    // )
 
     if (accountItem.viewRule === "Self") {
       if (!this.isSelfOrAdmin()) {
@@ -175,6 +265,23 @@ class UserEditPage extends React.Component {
       disabled = true;
     }
 
+    if (accountItem.name === "Organization" || accountItem.name === "Name") {
+      if (this.state.user.owner === "built-in" && this.state.user.name === "admin") {
+        disabled = true;
+      }
+    }
+
+    if (accountItem.name === "ID card info" || accountItem.name === "ID card") {
+      if (this.state.user.properties?.isIdCardVerified === "true") {
+        disabled = true;
+      }
+    }
+
+    let isKeysGenerated = false;
+    if (this.state.user.accessKey !== "" && this.state.user.accessKey !== "") {
+      isKeysGenerated = true;
+    }
+
     if (accountItem.name === "Organization") {
       return (
         <Row style={{marginTop: "10px"}} >
@@ -182,9 +289,42 @@ class UserEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Organization"), i18next.t("general:Organization - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} style={{width: "100%"}} disabled={disabled} value={this.state.user.owner} onChange={(value => {this.updateUserField("owner", value);})}>
+            <Select virtual={false} style={{width: "100%"}} disabled={disabled} value={this.state.user.owner} onChange={(value => {
+              this.getApplicationsByOrganization(value);
+              this.updateUserField("owner", value);
+              this.getGroups(value);
+            })}>
               {
                 this.state.organizations.map((organization, index) => <Option key={index} value={organization.name}>{organization.name}</Option>)
+              }
+            </Select>
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Groups") {
+      return (
+        <Row style={{marginTop: "10px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:Groups"), i18next.t("general:Groups - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} mode="multiple" style={{width: "100%"}} disabled={disabled} value={this.state.user.groups ?? []} onChange={(value => {
+              if (this.state.groups?.filter(group => value.includes(group.name))
+                .filter(group => group.type === "Physical").length > 1) {
+                Setting.showMessage("error", i18next.t("general:You can only select one physical group"));
+                return;
+              }
+
+              this.updateUserField("groups", value);
+            })}
+            >
+              {
+                this.state.groups?.map((group) => <Option key={group.name} value={group.name}>
+                  <Space>
+                    {group.type === "Physical" ? <UsergroupAddOutlined /> : <HolderOutlined />}
+                    {group.displayName}
+                  </Space>
+                </Option>)
               }
             </Select>
           </Col>
@@ -233,20 +373,11 @@ class UserEditPage extends React.Component {
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Avatar"), i18next.t("general:Avatar - Tooltip"))} :
           </Col>
-          <Col span={22} >
-            <Row style={{marginTop: "20px"}} >
-              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-                {i18next.t("general:Preview")}:
-              </Col>
-              <Col span={22} >
-                <a target="_blank" rel="noreferrer" href={this.state.user.avatar}>
-                  <img src={this.state.user.avatar} alt={this.state.user.avatar} height={90} style={{marginBottom: "20px"}} />
-                </a>
-              </Col>
-            </Row>
-            <Row style={{marginTop: "20px"}}>
-              <CropperDiv buttonText={`${i18next.t("user:Upload a photo")}...`} title={i18next.t("user:Upload a photo")} user={this.state.user} organization={this.state.organizations.find(organization => organization.name === this.state.organizationName)} />
-            </Row>
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {i18next.t("general:Preview")}:
+          </Col>
+          <Col>
+            {this.renderImage(this.state.user.avatar, i18next.t("user:Upload a photo"), i18next.t("user:Set new profile picture"), "avatar", false)}
           </Col>
         </Row>
       );
@@ -270,7 +401,7 @@ class UserEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Password"), i18next.t("general:Password - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <PasswordModal user={this.state.user} account={this.props.account} disabled={disabled} />
+            <PasswordModal user={this.state.user} organization={this.state.application?.organizationObj} account={this.props.account} disabled={disabled} />
           </Col>
         </Row>
       );
@@ -281,21 +412,16 @@ class UserEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Email"), i18next.t("general:Email - Tooltip"))} :
           </Col>
           <Col style={{paddingRight: "20px"}} span={11} >
-            {Setting.isLocalAdminUser(this.props.account) ?
-              (<Input value={this.state.user.email}
-                disabled={disabled}
-                onChange={e => {
-                  this.updateUserField("email", e.target.value);
-                }} />) :
-              (<Select virtual={false} value={this.state.user.email}
-                options={[Setting.getItem(this.state.user.email, this.state.user.email)]}
-                disabled={disabled}
-                onChange={e => {
-                  this.updateUserField("email", e.target.value);
-                }} />)
-            }
+            <Input
+              value={this.state.user.email}
+              style={{width: "280Px"}}
+              disabled={!Setting.isLocalAdminUser(this.props.account) ? true : disabled}
+              onChange={e => {
+                this.updateUserField("email", e.target.value);
+              }}
+            />
           </Col>
-          <Col span={11} >
+          <Col span={Setting.isMobile() ? 22 : 11} >
             {/* backend auto get the current user, so admin can not edit. Just self can reset*/}
             {this.isSelf() ? <ResetModal application={this.state.application} disabled={disabled} buttonText={i18next.t("user:Reset Email...")} destType={"email"} /> : null}
           </Col>
@@ -304,25 +430,30 @@ class UserEditPage extends React.Component {
     } else if (accountItem.name === "Phone") {
       return (
         <Row style={{marginTop: "20px"}} >
-          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+          <Col style={{marginTop: "5px"}} span={Setting.isMobile() ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Phone"), i18next.t("general:Phone - Tooltip"))} :
           </Col>
           <Col style={{paddingRight: "20px"}} span={11} >
-            {Setting.isLocalAdminUser(this.props.account) ?
-              <Input value={this.state.user.phone} addonBefore={`+${this.state.application?.organizationObj.phonePrefix}`}
-                disabled={disabled}
+            <Input.Group compact style={{width: "280Px"}}>
+              <CountryCodeSelect
+                style={{width: "30%"}}
+                // disabled={!Setting.isLocalAdminUser(this.props.account) ? true : disabled}
+                initValue={this.state.user.countryCode}
+                onChange={(value) => {
+                  this.updateUserField("countryCode", value);
+                }}
+                countryCodes={this.state.application?.organizationObj.countryCodes}
+              />
+              <Input value={this.state.user.phone}
+                style={{width: "70%"}}
+                disabled={!Setting.isLocalAdminUser(this.props.account) ? true : disabled}
                 onChange={e => {
                   this.updateUserField("phone", e.target.value);
-                }} /> :
-              (<Select virtual={false} value={`+${this.state.application?.organizationObj.phonePrefix} ${this.state.user.phone}`}
-                options={[Setting.getItem(`+${this.state.application?.organizationObj.phonePrefix} ${this.state.user.phone}`, this.state.user.phone)]}
-                disabled={disabled}
-                onChange={e => {
-                  this.updateUserField("phone", e.target.value);
-                }} />)}
+                }} />
+            </Input.Group>
           </Col>
-          <Col span={11} >
-            {this.isSelf() ? (<ResetModal application={this.state.application} disabled={disabled} buttonText={i18next.t("user:Reset Phone...")} destType={"phone"} />) : null}
+          <Col span={Setting.isMobile() ? 24 : 11} >
+            {this.isSelf() ? (<ResetModal application={this.state.application} countryCode={this.getCountryCode()} disabled={disabled} buttonText={i18next.t("user:Reset Phone...")} destType={"phone"} />) : null}
           </Col>
         </Row>
       );
@@ -333,7 +464,7 @@ class UserEditPage extends React.Component {
             {Setting.getLabel(i18next.t("user:Country/Region"), i18next.t("user:Country/Region - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <SelectRegionBox defaultValue={this.state.user.region} onChange={(value) => {
+            <RegionSelect defaultValue={this.state.user.region} onChange={(value) => {
               this.updateUserField("region", value);
             }} />
           </Col>
@@ -348,6 +479,19 @@ class UserEditPage extends React.Component {
           <Col span={22} >
             <Input value={this.state.user.location} onChange={e => {
               this.updateUserField("location", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Address") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Address"), i18next.t("user:Address - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.address} onChange={e => {
+              this.updateUserField("address", e.target.value);
             }} />
           </Col>
         </Row>
@@ -368,6 +512,56 @@ class UserEditPage extends React.Component {
             <Input value={this.state.user.title} onChange={e => {
               this.updateUserField("title", e.target.value);
             }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "ID card type") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:ID card type"), i18next.t("user:ID card type - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.idCardType} onChange={e => {
+              this.updateUserField("idCardType", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "ID card") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:ID card"), i18next.t("user:ID card - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.idCard} disabled={disabled} onChange={e => {
+              this.updateUserField("idCard", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "ID card info") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:ID card info"), i18next.t("user:ID card info - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Row style={{marginTop: "20px"}} >
+              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+                {i18next.t("general:Preview")}:
+              </Col>
+              {
+                [
+                  {name: "ID card front", value: "idCardFront"},
+                  {name: "ID card back", value: "idCardBack"},
+                  {name: "ID card with person", value: "idCardWithPerson"},
+                ].map((entry) => {
+                  return this.renderImage(this.state.user.properties[entry.value] || "", this.getIdCardType(entry.name), this.getIdCardText(entry.name), entry.value, disabled);
+                })
+              }
+            </Row>
           </Col>
         </Row>
       );
@@ -423,6 +617,97 @@ class UserEditPage extends React.Component {
           </Col>
         </Row>
       );
+    } else if (accountItem.name === "Language") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Language"), i18next.t("user:Language - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.language} onChange={e => {
+              this.updateUserField("language", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Gender") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Gender"), i18next.t("user:Gender - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.gender} onChange={e => {
+              this.updateUserField("gender", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Birthday") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Birthday"), i18next.t("user:Birthday - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.birthday} onChange={e => {
+              this.updateUserField("birthday", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Education") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Education"), i18next.t("user:Education - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.user.education} onChange={e => {
+              this.updateUserField("education", e.target.value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Score") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Score"), i18next.t("user:Score - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <InputNumber value={this.state.user.score} onChange={value => {
+              this.updateUserField("score", value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Karma") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Karma"), i18next.t("user:Karma - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <InputNumber value={this.state.user.karma} onChange={value => {
+              this.updateUserField("karma", value);
+            }} />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "Ranking") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("user:Ranking"), i18next.t("user:Ranking - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <InputNumber value={this.state.user.ranking} onChange={value => {
+              this.updateUserField("ranking", value);
+            }} />
+          </Col>
+        </Row>
+      );
     } else if (accountItem.name === "Signup application") {
       return (
         <Row style={{marginTop: "20px"}} >
@@ -434,6 +719,37 @@ class UserEditPage extends React.Component {
               onChange={(value => {this.updateUserField("signupApplication", value);})}
               options={this.state.applications.map((application) => Setting.getOption(application.name, application.name))
               } />
+          </Col>
+        </Row>
+      );
+    } else if (accountItem.name === "API key") {
+      return (
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:API key"), i18next.t("general:API key - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Row style={{marginTop: "20px"}} >
+              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 1}>
+                {Setting.getLabel(i18next.t("general:Access key"), i18next.t("general:Access key - Tooltip"))} :
+              </Col>
+              <Col span={22} >
+                <Input value={this.state.user.accessKey} disabled={true} />
+              </Col>
+            </Row>
+            <Row style={{marginTop: "20px"}} >
+              <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 1}>
+                {Setting.getLabel(i18next.t("general:Access secret"), i18next.t("general:Access secret - Tooltip"))} :
+              </Col>
+              <Col span={22} >
+                <Input value={this.state.user.accessSecret} disabled={true} />
+              </Col>
+            </Row>
+            <Row style={{marginTop: "20px"}} >
+              <Col span={22} >
+                <Button onClick={() => this.addUserKeys()}>{i18next.t(isKeysGenerated ? "general:update" : "general:generate")}</Button>
+              </Col>
+            </Row>
           </Col>
         </Row>
       );
@@ -551,6 +867,74 @@ class UserEditPage extends React.Component {
           </Col>
         </Row>
       );
+    } else if (accountItem.name === "Multi-factor authentication") {
+      return (
+        !this.isSelfOrAdmin() ? null : (
+          <Row style={{marginTop: "20px"}} >
+            <Col style={{marginTop: "5px"}} span={Setting.isMobile() ? 22 : 2}>
+              {Setting.getLabel(i18next.t("mfa:Multi-factor authentication"), i18next.t("mfa:Multi-factor authentication - Tooltip "))} :
+            </Col>
+            <Col span={22} >
+              <Card title={i18next.t("mfa:Multi-factor methods")}
+                extra={this.state.multiFactorAuths?.some(mfaProps => mfaProps.enabled) ?
+                  <PopconfirmModal
+                    text={i18next.t("general:Disable")}
+                    title={i18next.t("general:Sure to disable") + "?"}
+                    onConfirm={() => this.deleteMfa()}
+                  /> : null
+                }>
+                <List
+                  rowKey="mfaType"
+                  itemLayout="horizontal"
+                  dataSource={this.state.multiFactorAuths}
+                  renderItem={(item, index) => (
+                    <List.Item>
+                      <Space>
+                        {i18next.t("general:Type")}: {item.mfaType}
+                        {item.secret}
+                      </Space>
+                      {item.enabled ? (
+                        <Space>
+                          {item.enabled ?
+                            <Tag icon={<CheckCircleOutlined />} color="success">
+                              {i18next.t("general:Enabled")}
+                            </Tag> : null
+                          }
+                          {item.isPreferred ?
+                            <Tag icon={<CheckCircleOutlined />} color="blue" style={{marginRight: 20}} >
+                              {i18next.t("mfa:preferred")}
+                            </Tag> :
+                            <Button type="primary" style={{marginRight: 20}} onClick={() => {
+                              const values = {
+                                owner: this.state.user.owner,
+                                name: this.state.user.name,
+                                mfaType: item.mfaType,
+                              };
+                              MfaBackend.SetPreferredMfa(values).then((res) => {
+                                if (res.status === "ok") {
+                                  this.setState({
+                                    multiFactorAuths: res.data,
+                                  });
+                                }
+                              });
+                            }}>
+                              {i18next.t("mfa:Set preferred")}
+                            </Button>
+                          }
+                        </Space>
+                      ) : <Button type={"default"} onClick={() => {
+                        this.props.history.push(`/mfa/setup?mfaType=${item.mfaType}`);
+                      }}>
+                        {i18next.t("mfa:Setup")}
+                      </Button>}
+                    </List.Item>
+                  )}
+                />
+              </Card>
+            </Col>
+          </Row>
+        )
+      );
     } else if (accountItem.name === "WebAuthn credentials") {
       return (
         <Row style={{marginTop: "20px"}} >
@@ -571,7 +955,7 @@ class UserEditPage extends React.Component {
           <Col span={22} >
             <ManagedAccountTable
               title={i18next.t("user:Managed accounts")}
-              table={this.state.user.managedAccounts ?? []}
+              table={this.state.user.managedAccounts}
               onUpdateTable={(table) => {this.updateUserField("managedAccounts", table);}}
               applications={this.state.applications}
             />
@@ -579,6 +963,25 @@ class UserEditPage extends React.Component {
         </Row>
       );
     }
+  }
+
+  renderImage(imgUrl, title, set, tag, disabled) {
+    return (
+      <Col span={4} style={{textAlign: "center", margin: "auto"}} key={tag}>
+        {
+          imgUrl ?
+            <a target="_blank" rel="noreferrer" href={imgUrl} style={{marginBottom: "10px"}}>
+              <img src={imgUrl} alt={imgUrl} height={90} style={{marginBottom: "20px"}} />
+            </a>
+            :
+            <Col style={{height: "78%", border: "1px dotted grey", borderRadius: 3, marginBottom: 5}}>
+              <div style={{fontSize: 30, margin: 10}}>+</div>
+              <div style={{verticalAlign: "middle", marginBottom: 10}}>{`请上传${title}...`}</div>
+            </Col>
+        }
+        <CropperDivModal disabled={disabled} tag={tag} setTitle={set} buttonText={`${title}...`} title={title} user={this.state.user} organization={this.state.organizations.find(organization => organization.name === this.state.organizationName)} />
+      </Col>
+    );
   }
 
   renderUser() {
@@ -606,7 +1009,31 @@ class UserEditPage extends React.Component {
     );
   }
 
-  submitUserEdit(willExist) {
+  getIdCardType(key) {
+    if (key === "ID card front") {
+      return i18next.t("user:ID card front");
+    } else if (key === "ID card back") {
+      return i18next.t("user:ID card back");
+    } else if (key === "ID card with person") {
+      return i18next.t("user:ID card with person");
+    } else {
+      return "Unknown Id card name: " + key;
+    }
+  }
+
+  getIdCardText(key) {
+    if (key === "ID card front") {
+      return i18next.t("user:Upload ID card front picture");
+    } else if (key === "ID card back") {
+      return i18next.t("user:Upload ID card back picture");
+    } else if (key === "ID card with person") {
+      return i18next.t("user:Upload ID card with person picture");
+    } else {
+      return "Unknown Id card name: " + key;
+    }
+  }
+
+  submitUserEdit(needExit) {
     const user = Setting.deepCopy(this.state.user);
     UserBackend.updateUser(this.state.organizationName, this.state.userName, user)
       .then((res) => {
@@ -618,13 +1045,18 @@ class UserEditPage extends React.Component {
           });
 
           if (this.props.history !== undefined) {
-            if (willExist) {
-              this.props.history.push("/users");
+            if (needExit) {
+              const userListUrl = sessionStorage.getItem("userListUrl");
+              if (userListUrl !== null) {
+                this.props.history.push(userListUrl);
+              } else {
+                this.props.history.push("/users");
+              }
             } else {
               this.props.history.push(`/users/${this.state.user.owner}/${this.state.user.name}`);
             }
           } else {
-            if (willExist) {
+            if (needExit) {
               if (this.state.returnUrl) {
                 window.location.href = this.state.returnUrl;
               }
@@ -645,7 +1077,12 @@ class UserEditPage extends React.Component {
     UserBackend.deleteUser(this.state.user)
       .then((res) => {
         if (res.status === "ok") {
-          this.props.history.push("/users");
+          const userListUrl = sessionStorage.getItem("userListUrl");
+          if (userListUrl !== null) {
+            this.props.history.push(userListUrl);
+          } else {
+            this.props.history.push("/users");
+          }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
         }
@@ -682,4 +1119,4 @@ class UserEditPage extends React.Component {
   }
 }
 
-export default UserEditPage;
+export default withRouter(UserEditPage);

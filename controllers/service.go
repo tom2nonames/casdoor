@@ -20,6 +20,7 @@ package controllers
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
@@ -60,12 +61,17 @@ func (c *ApiController) SendEmail() {
 	var provider *object.Provider
 	if emailForm.Provider != "" {
 		// called by frontend's TestEmailWidget, provider name is set by frontend
-		provider = object.GetProvider(util.GetId("admin", emailForm.Provider))
+		provider, err = object.GetProvider(util.GetId("admin", emailForm.Provider))
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 	} else {
 		// called by Casdoor SDK via Client ID & Client Secret, so the used Email provider will be the application' Email provider or the default Email provider
-		var ok bool
-		provider, _, ok = c.GetProviderFromContext("Email")
-		if !ok {
+		provider, err = c.GetProviderFromContext("Email")
+		if err != nil {
+			c.ResponseError(err.Error())
 			return
 		}
 	}
@@ -80,7 +86,7 @@ func (c *ApiController) SendEmail() {
 		c.ResponseOk()
 	}
 
-	if util.IsStrsEmpty(emailForm.Title, emailForm.Content, emailForm.Sender) {
+	if util.IsStringsEmpty(emailForm.Title, emailForm.Content, emailForm.Sender) {
 		c.ResponseError(fmt.Sprintf(c.T("service:Empty parameters for emailForm: %v"), emailForm))
 		return
 	}
@@ -97,8 +103,11 @@ func (c *ApiController) SendEmail() {
 		return
 	}
 
+	code := "123456"
+	// "You have requested a verification code at Casdoor. Here is your code: %s, please enter in 5 minutes."
+	content := fmt.Sprintf(emailForm.Content, code)
 	for _, receiver := range emailForm.Receivers {
-		err = object.SendEmail(provider, emailForm.Title, emailForm.Content, receiver, emailForm.Sender)
+		err = object.SendEmail(provider, emailForm.Title, content, receiver, emailForm.Sender)
 		if err != nil {
 			c.ResponseError(err.Error())
 			return
@@ -118,30 +127,22 @@ func (c *ApiController) SendEmail() {
 // @Success 200 {object}  Response object
 // @router /api/send-sms [post]
 func (c *ApiController) SendSms() {
-	provider, _, ok := c.GetProviderFromContext("SMS")
-	if !ok {
-		return
-	}
-
-	var smsForm SmsForm
-	err := json.Unmarshal(c.Ctx.Input.RequestBody, &smsForm)
+	provider, err := c.GetProviderFromContext("SMS")
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	org := object.GetOrganization(smsForm.OrgId)
-	var invalidReceivers []string
-	for idx, receiver := range smsForm.Receivers {
-		if !util.IsPhoneCnValid(receiver) {
-			invalidReceivers = append(invalidReceivers, receiver)
-		} else {
-			smsForm.Receivers[idx] = fmt.Sprintf("+%s%s", org.PhonePrefix, receiver)
-		}
+	var smsForm SmsForm
+	err = json.Unmarshal(c.Ctx.Input.RequestBody, &smsForm)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
 	}
 
+	invalidReceivers := getInvalidSmsReceivers(smsForm)
 	if len(invalidReceivers) != 0 {
-		c.ResponseError(fmt.Sprintf(c.T("service:Invalid phone receivers: %s"), invalidReceivers))
+		c.ResponseError(fmt.Sprintf(c.T("service:Invalid phone receivers: %s"), strings.Join(invalidReceivers, ", ")))
 		return
 	}
 

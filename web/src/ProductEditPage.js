@@ -20,6 +20,7 @@ import i18next from "i18next";
 import {LinkOutlined} from "@ant-design/icons";
 import * as ProviderBackend from "./backend/ProviderBackend";
 import ProductBuyPage from "./ProductBuyPage";
+import * as OrganizationBackend from "./backend/OrganizationBackend";
 
 const {Option} = Select;
 
@@ -32,30 +33,50 @@ class ProductEditPage extends React.Component {
       productName: props.match.params.productName,
       product: null,
       providers: [],
+      organizations: [],
       mode: props.location.mode !== undefined ? props.location.mode : "edit",
     };
   }
 
   UNSAFE_componentWillMount() {
     this.getProduct();
+    this.getOrganizations();
     this.getPaymentProviders();
   }
 
   getProduct() {
-    ProductBackend.getProduct("admin", this.state.productName)
+    ProductBackend.getProduct(this.state.organizationName, this.state.productName)
       .then((product) => {
+        if (product === null) {
+          this.props.history.push("/404");
+          return;
+        }
+
         this.setState({
           product: product,
         });
       });
   }
 
-  getPaymentProviders() {
-    ProviderBackend.getProviders("admin")
+  getOrganizations() {
+    OrganizationBackend.getOrganizations("admin")
       .then((res) => {
         this.setState({
-          providers: res.filter(provider => provider.category === "Payment"),
+          organizations: (res.msg === undefined) ? res : [],
         });
+      });
+  }
+
+  getPaymentProviders() {
+    ProviderBackend.getProviders(this.props.account.owner)
+      .then((res) => {
+        if (res.status === "ok") {
+          this.setState({
+            providers: res.data.filter(provider => provider.category === "Payment"),
+          });
+        } else {
+          Setting.showMessage("error", res.msg);
+        }
       });
   }
 
@@ -108,6 +129,18 @@ class ProductEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:Organization"), i18next.t("general:Organization - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} style={{width: "100%"}} disabled={!Setting.isAdminUser(this.props.account)} value={this.state.product.owner} onChange={(value => {this.updateProductField("owner", value);})}>
+              {
+                this.state.organizations.map((organization, index) => <Option key={index} value={organization.name}>{organization.name}</Option>)
+              }
+            </Select>
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("product:Image"), i18next.t("product:Image - Tooltip"))} :
           </Col>
           <Col span={22} style={(Setting.isMobile()) ? {maxWidth: "100%"} : {}}>
@@ -135,7 +168,7 @@ class ProductEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("product:Tag"), i18next.t("product:Tag - Tooltip"))} :
+            {Setting.getLabel(i18next.t("user:Tag"), i18next.t("product:Tag - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input value={this.state.product.tag} onChange={e => {
@@ -155,7 +188,7 @@ class ProductEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("product:Description"), i18next.t("product:Description - Tooltip"))} :
+            {Setting.getLabel(i18next.t("general:Description"), i18next.t("general:Description - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input value={this.state.product.description} onChange={e => {
@@ -165,7 +198,7 @@ class ProductEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("product:Currency"), i18next.t("product:Currency - Tooltip"))} :
+            {Setting.getLabel(i18next.t("payment:Currency"), i18next.t("payment:Currency - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.product.currency} onChange={(value => {
@@ -215,7 +248,7 @@ class ProductEditPage extends React.Component {
             {Setting.getLabel(i18next.t("product:Payment providers"), i18next.t("product:Payment providers - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} mode="tags" style={{width: "100%"}} value={this.state.product.providers} onChange={(value => {this.updateProductField("providers", value);})}>
+            <Select virtual={false} mode="multiple" style={{width: "100%"}} value={this.state.product.providers} onChange={(value => {this.updateProductField("providers", value);})}>
               {
                 this.state.providers.map((provider, index) => <Option key={index} value={provider.name}>{provider.name}</Option>)
               }
@@ -290,7 +323,7 @@ class ProductEditPage extends React.Component {
           if (willExist) {
             this.props.history.push("/products");
           } else {
-            this.props.history.push(`/products/${this.state.product.name}`);
+            this.props.history.push(`/products/${this.state.product.owner}/${this.state.product.name}`);
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);

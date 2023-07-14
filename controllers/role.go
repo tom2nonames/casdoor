@@ -37,13 +37,31 @@ func (c *ApiController) GetRoles() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetRoles(owner)
+		roles, err := object.GetRoles(owner)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = roles
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetRoleCount(owner, field, value)))
-		roles := object.GetPaginationRoles(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		count, err := object.GetRoleCount(owner, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		roles, err := object.GetPaginationRoles(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(roles, paginator.Nums())
 	}
 }
@@ -52,13 +70,19 @@ func (c *ApiController) GetRoles() {
 // @Title GetRole
 // @Tag Role API
 // @Description get role
-// @Param   id    query    string  true        "The id of the role"
+// @Param   id     query    string  true        "The id ( owner/name ) of the role"
 // @Success 200 {object} object.Role The Response object
 // @router /get-role [get]
 func (c *ApiController) GetRole() {
 	id := c.Input().Get("id")
 
-	c.Data["json"] = object.GetRole(id)
+	role, err := object.GetRole(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = role
 	c.ServeJSON()
 }
 
@@ -66,7 +90,7 @@ func (c *ApiController) GetRole() {
 // @Title UpdateRole
 // @Tag Role API
 // @Description update role
-// @Param   id    query    string  true        "The id of the role"
+// @Param   id     query    string  true        "The id ( owner/name ) of the role"
 // @Param   body    body   object.Role  true        "The details of the role"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-role [post]

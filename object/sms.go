@@ -14,19 +14,42 @@
 
 package object
 
-import "github.com/casdoor/go-sms-sender"
+import (
+	"strings"
+
+	sender "github.com/casdoor/go-sms-sender"
+)
+
+func getSmsClient(provider *Provider) (sender.SmsClient, error) {
+	var client sender.SmsClient
+	var err error
+
+	if provider.Type == sender.HuaweiCloud {
+		client, err = sender.NewSmsClient(provider.Type, provider.ClientId, provider.ClientSecret, provider.SignName, provider.TemplateCode, provider.ProviderUrl, provider.AppId)
+	} else {
+		client, err = sender.NewSmsClient(provider.Type, provider.ClientId, provider.ClientSecret, provider.SignName, provider.TemplateCode, provider.AppId)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
+}
 
 func SendSms(provider *Provider, content string, phoneNumbers ...string) error {
-	client, err := go_sms_sender.NewSmsClient(provider.Type, provider.ClientId, provider.ClientSecret, provider.SignName, provider.TemplateCode, provider.AppId)
-	if provider.Type == go_sms_sender.HuaweiCloud {
-		client, err = go_sms_sender.NewSmsClient(provider.Type, provider.ClientId, provider.ClientSecret, provider.SignName, provider.TemplateCode, provider.ProviderUrl, provider.AppId)
-	}
+	client, err := getSmsClient(provider)
 	if err != nil {
 		return err
 	}
 
+	if provider.Type == sender.Aliyun {
+		for i, number := range phoneNumbers {
+			phoneNumbers[i] = strings.TrimPrefix(number, "+86")
+		}
+	}
+
 	params := map[string]string{}
-	if provider.Type == go_sms_sender.TencentCloud {
+	if provider.Type == sender.TencentCloud {
 		params["0"] = content
 	} else {
 		params["code"] = content

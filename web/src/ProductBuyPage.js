@@ -40,10 +40,15 @@ class ProductBuyPage extends React.Component {
       return;
     }
 
-    ProductBackend.getProduct("admin", this.state.productName)
-      .then((product) => {
+    ProductBackend.getProduct(this.props.account.owner, this.state.productName)
+      .then((res) => {
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
         this.setState({
-          product: product,
+          product: res,
         });
       });
   }
@@ -151,12 +156,14 @@ class ProductBuyPage extends React.Component {
 
   getPayButton(provider) {
     let text = provider.type;
-    if (provider.type === "Alipay") {
+    if (provider.type === "Dummy") {
+      text = i18next.t("product:Dummy");
+    } else if (provider.type === "Alipay") {
       text = i18next.t("product:Alipay");
     } else if (provider.type === "WeChat Pay") {
       text = i18next.t("product:WeChat Pay");
-    } else if (provider.type === "Paypal") {
-      text = i18next.t("product:Paypal");
+    } else if (provider.type === "PayPal") {
+      text = i18next.t("product:PayPal");
     }
 
     return (
@@ -216,7 +223,7 @@ class ProductBuyPage extends React.Component {
               </span>
             </Descriptions.Item>
             <Descriptions.Item label={i18next.t("product:Detail")}><span style={{fontSize: 16}}>{Setting.getLanguageText(product?.detail)}</span></Descriptions.Item>
-            <Descriptions.Item label={i18next.t("product:Tag")}><span style={{fontSize: 16}}>{product?.tag}</span></Descriptions.Item>
+            <Descriptions.Item label={i18next.t("user:Tag")}><span style={{fontSize: 16}}>{product?.tag}</span></Descriptions.Item>
             <Descriptions.Item label={i18next.t("product:SKU")}><span style={{fontSize: 16}}>{product?.name}</span></Descriptions.Item>
             <Descriptions.Item label={i18next.t("product:Image")} span={3}>
               <img src={product?.image} alt={product?.name} height={90} style={{marginBottom: "20px"}} />

@@ -21,7 +21,7 @@ import i18next from "i18next";
 
 import "codemirror/lib/codemirror.css";
 import * as ModelBackend from "./backend/ModelBackend";
-import PolicyTable from "./common/PoliciyTable";
+import PolicyTable from "./table/PoliciyTable";
 require("codemirror/theme/material-darker.css");
 require("codemirror/mode/javascript/javascript");
 
@@ -32,7 +32,7 @@ class AdapterEditPage extends React.Component {
     super(props);
     this.state = {
       classes: props,
-      owner: props.organizationName !== undefined ? props.organizationName : props.match.params.organizationName,
+      organizationName: props.organizationName !== undefined ? props.organizationName : props.match.params.organizationName,
       adapterName: props.match.params.adapterName,
       adapter: null,
       organizations: [],
@@ -47,14 +47,19 @@ class AdapterEditPage extends React.Component {
   }
 
   getAdapter() {
-    AdapterBackend.getAdapter(this.state.owner, this.state.adapterName)
+    AdapterBackend.getAdapter(this.state.organizationName, this.state.adapterName)
       .then((res) => {
         if (res.status === "ok") {
+          if (res.data === null) {
+            this.props.history.push("/404");
+            return;
+          }
+
           this.setState({
             adapter: res.data,
           });
 
-          this.getModels(this.state.owner);
+          this.getModels(this.state.organizationName);
         }
       });
   }
@@ -71,6 +76,10 @@ class AdapterEditPage extends React.Component {
   getModels(organizationName) {
     ModelBackend.getModels(organizationName)
       .then((res) => {
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
         this.setState({
           models: res,
         });
@@ -109,7 +118,10 @@ class AdapterEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Organization"), i18next.t("general:Organization - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} style={{width: "100%"}} value={this.state.adapter.organization} onChange={(value => {this.updateAdapterField("organization", value);})}>
+            <Select virtual={false} style={{width: "100%"}} disabled={!Setting.isAdminUser(this.props.account)} value={this.state.adapter.owner} onChange={(value => {
+              this.getModels(value);
+              this.updateAdapterField("owner", value);
+            })}>
               {
                 this.state.organizations.map((organization, index) => <Option key={index} value={organization.name}>{organization.name}</Option>)
               }
@@ -244,7 +256,7 @@ class AdapterEditPage extends React.Component {
             {Setting.getLabel(i18next.t("adapter:Policies"), i18next.t("adapter:Policies - Tooltip"))} :
           </Col>
           <Col span={22}>
-            <PolicyTable owner={this.state.owner} name={this.state.adapterName} mode={this.state.mode} />
+            <PolicyTable owner={this.state.organizationName} name={this.state.adapterName} mode={this.state.mode} />
           </Col>
         </Row>
         <Row style={{marginTop: "20px"}} >
@@ -263,7 +275,7 @@ class AdapterEditPage extends React.Component {
 
   submitAdapterEdit(willExist) {
     const adapter = Setting.deepCopy(this.state.adapter);
-    AdapterBackend.updateAdapter(this.state.adapter.owner, this.state.adapterName, adapter)
+    AdapterBackend.updateAdapter(this.state.organizationName, this.state.adapterName, adapter)
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
@@ -274,7 +286,7 @@ class AdapterEditPage extends React.Component {
           if (willExist) {
             this.props.history.push("/adapters");
           } else {
-            this.props.history.push(`/adapters/${this.state.owner}/${this.state.adapter.name}`);
+            this.props.history.push(`/adapters/${this.state.organizationName}/${this.state.adapter.name}`);
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);

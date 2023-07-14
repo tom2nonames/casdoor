@@ -38,13 +38,31 @@ func (c *ApiController) GetProducts() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetProducts(owner)
+		products, err := object.GetProducts(owner)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = products
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetProductCount(owner, field, value)))
-		products := object.GetPaginationProducts(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		count, err := object.GetProductCount(owner, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		products, err := object.GetPaginationProducts(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(products, paginator.Nums())
 	}
 }
@@ -53,14 +71,23 @@ func (c *ApiController) GetProducts() {
 // @Title GetProduct
 // @Tag Product API
 // @Description get product
-// @Param   id    query    string  true        "The id of the product"
+// @Param   id     query    string  true        "The id ( owner/name ) of the product"
 // @Success 200 {object} object.Product The Response object
 // @router /get-product [get]
 func (c *ApiController) GetProduct() {
 	id := c.Input().Get("id")
 
-	product := object.GetProduct(id)
-	object.ExtendProductWithProviders(product)
+	product, err := object.GetProduct(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	err = object.ExtendProductWithProviders(product)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
 	c.Data["json"] = product
 	c.ServeJSON()
@@ -70,7 +97,7 @@ func (c *ApiController) GetProduct() {
 // @Title UpdateProduct
 // @Tag Product API
 // @Description update product
-// @Param   id    query    string  true        "The id of the product"
+// @Param   id     query    string  true        "The id ( owner/name ) of the product"
 // @Param   body    body   object.Product  true        "The details of the product"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-product [post]
@@ -130,7 +157,7 @@ func (c *ApiController) DeleteProduct() {
 // @Title BuyProduct
 // @Tag Product API
 // @Description buy product
-// @Param   id    query    string  true            "The id of the product"
+// @Param   id     query    string  true        "The id ( owner/name ) of the product"
 // @Param   providerName    query    string  true  "The name of the provider"
 // @Success 200 {object} controllers.Response The Response object
 // @router /buy-product [post]
@@ -145,17 +172,22 @@ func (c *ApiController) BuyProduct() {
 		return
 	}
 
-	user := object.GetUser(userId)
-	if user == nil {
-		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), userId))
-		return
-	}
-
-	payUrl, err := object.BuyProduct(id, providerName, user, host)
+	user, err := object.GetUser(userId)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	c.ResponseOk(payUrl)
+	if user == nil {
+		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), userId))
+		return
+	}
+
+	payUrl, orderId, err := object.BuyProduct(id, providerName, user, host)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk(payUrl, orderId)
 }

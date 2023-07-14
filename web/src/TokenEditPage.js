@@ -35,9 +35,19 @@ class TokenEditPage extends React.Component {
 
   getToken() {
     TokenBackend.getToken("admin", this.state.tokenName)
-      .then((token) => {
+      .then((res) => {
+        if (res === null) {
+          this.props.history.push("/404");
+          return;
+        }
+
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
         this.setState({
-          token: token,
+          token: res,
         });
       });
   }
@@ -94,7 +104,7 @@ class TokenEditPage extends React.Component {
             {i18next.t("general:Organization")}:
           </Col>
           <Col span={22} >
-            <Input value={this.state.token.organization} onChange={e => {
+            <Input disabled={!Setting.isAdminUser(this.props.account)} value={this.state.token.organization} onChange={e => {
               this.updateTokenField("organization", e.target.value);
             }} />
           </Col>
@@ -141,7 +151,7 @@ class TokenEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {i18next.t("token:Scope")}:
+            {i18next.t("provider:Scope")}:
           </Col>
           <Col span={22} >
             <Input value={this.state.token.scope} onChange={e => {

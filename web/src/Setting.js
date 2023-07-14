@@ -14,7 +14,7 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Tag, Tooltip, message, theme} from "antd";
+import {Select, Tag, Tooltip, message, theme} from "antd";
 import {QuestionCircleTwoTone} from "@ant-design/icons";
 import {isMobile as isMobileDevice} from "react-device-detect";
 import "./i18n";
@@ -23,32 +23,59 @@ import copy from "copy-to-clipboard";
 import {authConfig} from "./auth/Auth";
 import {Helmet} from "react-helmet";
 import * as Conf from "./Conf";
-import * as path from "path-browserify";
+import * as phoneNumber from "libphonenumber-js";
+import moment from "moment";
+
+const {Option} = Select;
 
 export const ServerUrl = "";
 
 // export const StaticBaseUrl = "https://cdn.jsdelivr.net/gh/casbin/static";
 export const StaticBaseUrl = "https://cdn.casbin.org";
 
-// https://catamphetamine.gitlab.io/country-flag-icons/3x2/index.html
-export const CountryRegionData = getCountryRegionData();
-
 export const Countries = [{label: "English", key: "en", country: "US", alt: "English"},
-  {label: "简体中文", key: "zh", country: "CN", alt: "简体中文"},
   {label: "Español", key: "es", country: "ES", alt: "Español"},
   {label: "Français", key: "fr", country: "FR", alt: "Français"},
   {label: "Deutsch", key: "de", country: "DE", alt: "Deutsch"},
+  {label: "中文", key: "zh", country: "CN", alt: "中文"},
+  {label: "Indonesia", key: "id", country: "ID", alt: "Indonesia"},
   {label: "日本語", key: "ja", country: "JP", alt: "日本語"},
   {label: "한국어", key: "ko", country: "KR", alt: "한국어"},
   {label: "Русский", key: "ru", country: "RU", alt: "Русский"},
+  {label: "TiếngViệt", key: "vi", country: "VN", alt: "TiếngViệt"},
+  {label: "Português", key: "pt", country: "BR", alt: "Português"},
 ];
 
-const {defaultAlgorithm, darkAlgorithm, compactAlgorithm} = theme;
+export function getThemeData(organization, application) {
+  if (application?.themeData?.isEnabled) {
+    return application.themeData;
+  } else if (organization?.themeData?.isEnabled) {
+    return organization.themeData;
+  } else {
+    return Conf.ThemeDefault;
+  }
+}
 
-export const Themes = [{label: i18next.t("general:Dark"), key: "Dark", style: darkAlgorithm, selectThemeLogo: `${StaticBaseUrl}/img/dark.svg`},
-  {label: i18next.t("general:Compact"), key: "Compact", style: compactAlgorithm, selectThemeLogo: `${StaticBaseUrl}/img/compact.svg`},
-  {label: i18next.t("general:Default"), key: "Default", style: defaultAlgorithm, selectThemeLogo: `${StaticBaseUrl}/img/light.svg`},
-];
+export function getAlgorithm(themeAlgorithmNames) {
+  return themeAlgorithmNames.map((algorithmName) => {
+    if (algorithmName === "dark") {
+      return theme.darkAlgorithm;
+    }
+    if (algorithmName === "compact") {
+      return theme.compactAlgorithm;
+    }
+    return theme.defaultAlgorithm;
+  });
+}
+
+export function getAlgorithmNames(themeData) {
+  const algorithms = [themeData?.themeType !== "dark" ? "default" : "dark"];
+  if (themeData?.isCompact === true) {
+    algorithms.push("compact");
+  }
+
+  return algorithms;
+}
 
 export const OtherProviderInfo = {
   SMS: {
@@ -69,12 +96,16 @@ export const OtherProviderInfo = {
       url: "https://www.huaweicloud.com/product/msgsms.html",
     },
     "Twilio SMS": {
-      logo: `${StaticBaseUrl}/img/social_twilio.png`,
+      logo: `${StaticBaseUrl}/img/social_twilio.svg`,
       url: "https://www.twilio.com/messaging",
     },
     "SmsBao SMS": {
       logo: `${StaticBaseUrl}/img/social_smsbao.png`,
       url: "https://www.smsbao.com/",
+    },
+    "SUBMAIL SMS": {
+      logo: `${StaticBaseUrl}/img/social_submail.svg`,
+      url: "https://www.mysubmail.com",
     },
     "Mock SMS": {
       logo: `${StaticBaseUrl}/img/social_default.png`,
@@ -83,8 +114,16 @@ export const OtherProviderInfo = {
   },
   Email: {
     "Default": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
+      logo: `${StaticBaseUrl}/img/email_default.png`,
       url: "",
+    },
+    "SUBMAIL": {
+      logo: `${StaticBaseUrl}/img/social_submail.svg`,
+      url: "https://www.mysubmail.com",
+    },
+    "Mailtrap": {
+      logo: `${StaticBaseUrl}/img/email_mailtrap.png`,
+      url: "https://mailtrap.io",
     },
   },
   Storage: {
@@ -124,6 +163,10 @@ export const OtherProviderInfo = {
     },
   },
   Payment: {
+    "Dummy": {
+      logo: `${StaticBaseUrl}/img/payment_paypal.png`,
+      url: "",
+    },
     "Alipay": {
       logo: `${StaticBaseUrl}/img/payment_alipay.png`,
       url: "https://www.alipay.com/",
@@ -143,7 +186,7 @@ export const OtherProviderInfo = {
   },
   Captcha: {
     "Default": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
+      logo: `${StaticBaseUrl}/img/captcha_default.png`,
       url: "https://pkg.go.dev/github.com/dchest/captcha",
     },
     "reCAPTCHA": {
@@ -167,20 +210,57 @@ export const OtherProviderInfo = {
       url: "https://www.cloudflare.com/products/turnstile/",
     },
   },
+  AI: {
+    "OpenAI API - GPT": {
+      logo: `${StaticBaseUrl}/img/social_openai.svg`,
+      url: "https://platform.openai.com",
+    },
+  },
 };
 
-export function getCountryRegionData() {
-  let language = i18next.language;
-  if (language === null || language === "null") {
-    language = Conf.DefaultLanguage;
-  }
-
+export function initCountries() {
   const countries = require("i18n-iso-countries");
-  countries.registerLocale(require("i18n-iso-countries/langs/" + language + ".json"));
-  const data = countries.getNames(language, {select: "official"});
-  const result = [];
-  for (const i in data) {result.push({code: i, name: data[i]});}
-  return result;
+  countries.registerLocale(require("i18n-iso-countries/langs/" + getLanguage() + ".json"));
+  return countries;
+}
+
+export function getCountryCode(country) {
+  if (phoneNumber.isSupportedCountry(country)) {
+    return phoneNumber.getCountryCallingCode(country);
+  }
+  return "";
+}
+
+export function getCountryCodeData(countryCodes = phoneNumber.getCountries()) {
+  return countryCodes?.map((countryCode) => {
+    if (phoneNumber.isSupportedCountry(countryCode)) {
+      const name = initCountries().getName(countryCode, getLanguage());
+      return {
+        code: countryCode,
+        name: name || "",
+        phone: phoneNumber.getCountryCallingCode(countryCode),
+      };
+    }
+  }).filter(item => item.name !== "")
+    .sort((a, b) => a.phone - b.phone);
+}
+
+export function getCountryCodeOption(country) {
+  return (
+    <Option key={country.code} value={country.code} label={`+${country.phone}`} text={`${country.name}, ${country.code}, ${country.phone}`} >
+      <div style={{display: "flex", justifyContent: "space-between", marginRight: "10px"}}>
+        <div>
+          {getCountryImage(country)}
+          {`${country.name}`}
+        </div>
+        {`+${country.phone}`}
+      </div>
+    </Option>
+  );
+}
+
+export function getCountryImage(country) {
+  return <img src={`${StaticBaseUrl}/flag-icons/${country.code}.svg`} alt={country.name} height={20} style={{marginRight: 10}} />;
 }
 
 export function initServerUrl() {
@@ -219,6 +299,13 @@ export function isProviderVisible(providerItem) {
   return true;
 }
 
+export function isResponseDenied(data) {
+  if (data.msg === "Unauthorized operation" || data.msg === "未授权的操作") {
+    return true;
+  }
+  return false;
+}
+
 export function isProviderVisibleForSignUp(providerItem) {
   if (providerItem.canSignUp === false) {
     return false;
@@ -244,19 +331,19 @@ export function isSignupItemPrompted(signupItem) {
 }
 
 export function getAllPromptedProviderItems(application) {
-  return application.providers.filter(providerItem => isProviderPrompted(providerItem));
+  return application.providers?.filter(providerItem => isProviderPrompted(providerItem));
 }
 
 export function getAllPromptedSignupItems(application) {
-  return application.signupItems.filter(signupItem => isSignupItemPrompted(signupItem));
+  return application.signupItems?.filter(signupItem => isSignupItemPrompted(signupItem));
 }
 
 export function getSignupItem(application, itemName) {
   const signupItems = application.signupItems?.filter(signupItem => signupItem.name === itemName);
-  if (signupItems.length === 0) {
-    return null;
+  if (signupItems?.length > 0) {
+    return signupItems[0];
   }
-  return signupItems[0];
+  return null;
 }
 
 export function isValidPersonName(personName) {
@@ -280,16 +367,16 @@ export function isValidEmail(email) {
   return emailRegex.test(email);
 }
 
-export function isValidPhone(phone) {
-  return phone !== "";
+export function isValidPhone(phone, countryCode = "") {
+  if (countryCode !== "" && countryCode !== "CN") {
+    return phoneNumber.isValidPhoneNumber(phone, countryCode);
+  }
 
-  // if (phone === "") {
-  //   return false;
-  // }
-  //
-  // // https://learnku.com/articles/31543, `^s*$` filter empty email individually.
-  // const phoneRegex = /^\s*$|^1(3\d|4[5-9]|5[0-35-9]|6[2567]|7[0-8]|8\d|9[0-35-9])\d{8}$/;
-  // return phoneRegex.test(phone);
+  // https://learnku.com/articles/31543, `^s*$` filter empty email individually.
+  const phoneCnRegex = /^1(3\d|4[5-9]|5[0-35-9]|6[2567]|7[0-8]|8\d|9[0-35-9])\d{8}$/;
+  const phoneRegex = /[0-9]{4,15}$/;
+
+  return countryCode === "CN" ? phoneCnRegex.test(phone) : phoneRegex.test(phone);
 }
 
 export function isValidInvoiceTitle(invoiceTitle) {
@@ -328,12 +415,12 @@ export function isAffiliationPrompted(application) {
 
 export function hasPromptPage(application) {
   const providerItems = getAllPromptedProviderItems(application);
-  if (providerItems.length !== 0) {
+  if (providerItems?.length > 0) {
     return true;
   }
 
   const signupItems = getAllPromptedSignupItems(application);
-  if (signupItems.length !== 0) {
+  if (signupItems?.length > 0) {
     return true;
   }
 
@@ -393,6 +480,26 @@ export function isPromptAnswered(user, application) {
     }
   }
   return true;
+}
+
+export const MfaRuleRequired = "Required";
+export const MfaRulePrompted = "Prompted";
+export const MfaRuleOptional = "Optional";
+
+export function isRequiredEnableMfa(user, organization) {
+  if (!user || !organization || !organization.mfaItems) {
+    return false;
+  }
+  return getMfaItemsByRules(user, organization, [MfaRuleRequired]).length > 0;
+}
+
+export function getMfaItemsByRules(user, organization, mfaRules = []) {
+  if (!user || !organization || !organization.mfaItems) {
+    return [];
+  }
+
+  return organization.mfaItems.filter((mfaItem) => mfaRules.includes(mfaItem.rule))
+    .filter((mfaItem) => user.multiFactorAuths.some((mfa) => mfa.mfaType === mfaItem.name && !mfa.enabled));
 }
 
 export function parseObject(s) {
@@ -476,10 +583,6 @@ export function addRow(array, row, position = "end") {
   return position === "end" ? [...array, row] : [row, ...array];
 }
 
-export function prependRow(array, row) {
-  return [row, ...array];
-}
-
 export function deleteRow(array, i) {
   // return array = array.slice(0, i).concat(array.slice(i + 1));
   return [...array.slice(0, i), ...array.slice(i + 1)];
@@ -514,9 +617,8 @@ export function getFormattedDate(date) {
     return null;
   }
 
-  date = date.replace("T", " ");
-  date = date.replace("+08:00", " ");
-  return date;
+  const m = moment(date).local();
+  return m.format("YYYY-MM-DD HH:mm:ss");
 }
 
 export function getFormattedDateShort(date) {
@@ -525,6 +627,22 @@ export function getFormattedDateShort(date) {
 
 export function getShortName(s) {
   return s.split("/").slice(-1)[0];
+}
+
+export function getNameAtLeast(s) {
+  s = getShortName(s);
+  if (s.length >= 6) {
+    return s;
+  }
+
+  return (
+    <React.Fragment>
+      &nbsp;
+      {s}
+      &nbsp;
+      &nbsp;
+    </React.Fragment>
+  );
 }
 
 export function getShortText(s, maxLength = 35) {
@@ -569,14 +687,6 @@ export function getAvatarColor(s) {
   return colorList[hash % 4];
 }
 
-export function getLogo(theme) {
-  if (theme === "Dark") {
-    return `${StaticBaseUrl}/img/casdoor-logo_1185x256_dark.png`;
-  } else {
-    return `${StaticBaseUrl}/img/casdoor-logo_1185x256.png`;
-  }
-}
-
 export function getLanguageText(text) {
   if (!text.includes("|")) {
     return text;
@@ -593,18 +703,12 @@ export function getLanguageText(text) {
 }
 
 export function getLanguage() {
-  return i18next.language;
+  return (i18next.language !== undefined && i18next.language !== null && i18next.language !== "" && i18next.language !== "null") ? i18next.language : Conf.DefaultLanguage;
 }
 
 export function setLanguage(language) {
   localStorage.setItem("language", language);
-  changeMomentLanguage(language);
   i18next.changeLanguage(language);
-}
-
-export function setTheme(themeKey) {
-  localStorage.setItem("theme", themeKey);
-  dispatchEvent(new Event("themeChange"));
 }
 
 export function getAcceptLanguage() {
@@ -612,29 +716,6 @@ export function getAcceptLanguage() {
     return "en;q=0.9,en;q=0.8";
   }
   return i18next.language + ";q=0.9,en;q=0.8";
-}
-
-export function changeMomentLanguage(language) {
-  // if (language === "zh") {
-  //   moment.locale("zh", {
-  //     relativeTime: {
-  //       future: "%s内",
-  //       past: "%s前",
-  //       s: "几秒",
-  //       ss: "%d秒",
-  //       m: "1分钟",
-  //       mm: "%d分钟",
-  //       h: "1小时",
-  //       hh: "%d小时",
-  //       d: "1天",
-  //       dd: "%d天",
-  //       M: "1个月",
-  //       MM: "%d个月",
-  //       y: "1年",
-  //       yy: "%d年",
-  //     },
-  //   });
-  // }
 }
 
 export function getClickable(text) {
@@ -702,6 +783,54 @@ export function getProviderTypeOptions(category) {
         {id: "Okta", name: "Okta"},
         {id: "Douyin", name: "Douyin"},
         {id: "Line", name: "Line"},
+        {id: "Amazon", name: "Amazon"},
+        {id: "Auth0", name: "Auth0"},
+        {id: "BattleNet", name: "Battle.net"},
+        {id: "Bitbucket", name: "Bitbucket"},
+        {id: "Box", name: "Box"},
+        {id: "CloudFoundry", name: "Cloud Foundry"},
+        {id: "Dailymotion", name: "Dailymotion"},
+        {id: "Deezer", name: "Deezer"},
+        {id: "DigitalOcean", name: "DigitalOcean"},
+        {id: "Discord", name: "Discord"},
+        {id: "Dropbox", name: "Dropbox"},
+        {id: "EveOnline", name: "Eve Online"},
+        {id: "Fitbit", name: "Fitbit"},
+        {id: "Gitea", name: "Gitea"},
+        {id: "Heroku", name: "Heroku"},
+        {id: "InfluxCloud", name: "InfluxCloud"},
+        {id: "Instagram", name: "Instagram"},
+        {id: "Intercom", name: "Intercom"},
+        {id: "Kakao", name: "Kakao"},
+        {id: "Lastfm", name: "Lastfm"},
+        {id: "Mailru", name: "Mailru"},
+        {id: "Meetup", name: "Meetup"},
+        {id: "MicrosoftOnline", name: "MicrosoftOnline"},
+        {id: "Naver", name: "Naver"},
+        {id: "Nextcloud", name: "Nextcloud"},
+        {id: "OneDrive", name: "OneDrive"},
+        {id: "Oura", name: "Oura"},
+        {id: "Patreon", name: "Patreon"},
+        {id: "PayPal", name: "PayPal"},
+        {id: "SalesForce", name: "SalesForce"},
+        {id: "Shopify", name: "Shopify"},
+        {id: "Soundcloud", name: "Soundcloud"},
+        {id: "Spotify", name: "Spotify"},
+        {id: "Strava", name: "Strava"},
+        {id: "Stripe", name: "Stripe"},
+        {id: "TikTok", name: "TikTok"},
+        {id: "Tumblr", name: "Tumblr"},
+        {id: "Twitch", name: "Twitch"},
+        {id: "Twitter", name: "Twitter"},
+        {id: "Typetalk", name: "Typetalk"},
+        {id: "Uber", name: "Uber"},
+        {id: "VK", name: "VK"},
+        {id: "Wepay", name: "Wepay"},
+        {id: "Xero", name: "Xero"},
+        {id: "Yahoo", name: "Yahoo"},
+        {id: "Yammer", name: "Yammer"},
+        {id: "Yandex", name: "Yandex"},
+        {id: "Zoom", name: "Zoom"},
         {id: "Custom", name: "Custom"},
       ]
     );
@@ -710,6 +839,7 @@ export function getProviderTypeOptions(category) {
       [
         {id: "Default", name: "Default"},
         {id: "SUBMAIL", name: "SUBMAIL"},
+        {id: "Mailtrap", name: "Mailtrap"},
       ]
     );
   } else if (category === "SMS") {
@@ -721,6 +851,7 @@ export function getProviderTypeOptions(category) {
         {id: "Huawei Cloud SMS", name: "Huawei Cloud SMS"},
         {id: "Twilio SMS", name: "Twilio SMS"},
         {id: "SmsBao SMS", name: "SmsBao SMS"},
+        {id: "SUBMAIL SMS", name: "SUBMAIL SMS"},
       ]
     );
   } else if (category === "Storage") {
@@ -741,6 +872,7 @@ export function getProviderTypeOptions(category) {
     ]);
   } else if (category === "Payment") {
     return ([
+      {id: "Dummy", name: "Dummy"},
       {id: "Alipay", name: "Alipay"},
       {id: "WeChat Pay", name: "WeChat Pay"},
       {id: "PayPal", name: "PayPal"},
@@ -755,24 +887,10 @@ export function getProviderTypeOptions(category) {
       {id: "GEETEST", name: "GEETEST"},
       {id: "Cloudflare Turnstile", name: "Cloudflare Turnstile"},
     ]);
-  } else {
-    return [];
-  }
-}
-
-export function getProviderSubTypeOptions(type) {
-  if (type === "WeCom" || type === "Infoflow") {
-    return (
-      [
-        {id: "Internal", name: "Internal"},
-        {id: "Third-party", name: "Third-party"},
-      ]
-    );
-  } else if (type === "Aliyun Captcha") {
-    return [
-      {id: "nc", name: "Sliding Validation"},
-      {id: "ic", name: "Intelligent Validation"},
-    ];
+  } else if (category === "AI") {
+    return ([
+      {id: "OpenAI API - GPT", name: "OpenAI API - GPT"},
+    ]);
   } else {
     return [];
   }
@@ -805,7 +923,7 @@ export function getLoginLink(application) {
   } else if (authConfig.appName === application.name) {
     url = "/login";
   } else if (application.signinUrl === "") {
-    url = path.join(application.homepageUrl, "/login");
+    url = trim(application.homepageUrl, "/") + "/login";
   } else {
     url = application.signinUrl;
   }
@@ -819,10 +937,11 @@ export function renderLoginLink(application, text) {
 
 export function redirectToLoginPage(application, history) {
   const loginLink = getLoginLink(application);
-  if (loginLink.indexOf("http") === 0 || loginLink.indexOf("https") === 0) {
-    window.location.replace(loginLink);
+  if (loginLink.startsWith("http://") || loginLink.startsWith("https://")) {
+    goToLink(loginLink);
+  } else {
+    history.push(loginLink);
   }
-  history.push(loginLink);
 }
 
 function renderLink(url, text, onClick) {
@@ -964,13 +1083,17 @@ export function getMaskedEmail(email) {
   return `${username}@${domainTokens.join(".")}`;
 }
 
+export function IsEmail(s) {
+  return s.includes("@");
+}
+
 export function getArrayItem(array, key, value) {
   const res = array.filter(item => item[key] === value)[0];
   return res;
 }
 
 export function getDeduplicatedArray(array, filterArray, key) {
-  const res = array.filter(item => filterArray.filter(filterItem => filterItem[key] === item[key]).length === 0);
+  const res = array.filter(item => !filterArray.some(tableItem => tableItem[key] === item[key]));
   return res;
 }
 
@@ -987,18 +1110,28 @@ export function getTagColor(s) {
   return "processing";
 }
 
-export function getTags(tags) {
+export function getTags(tags, urlPrefix = null) {
   const res = [];
   if (!tags) {
     return res;
   }
 
   tags.forEach((tag, i) => {
-    res.push(
-      <Tag color={getTagColor(tag)}>
-        {tag}
-      </Tag>
-    );
+    if (urlPrefix === null) {
+      res.push(
+        <Tag color={getTagColor(tag)}>
+          {tag}
+        </Tag>
+      );
+    } else {
+      res.push(
+        <Link to={`/${urlPrefix}/${tag}`}>
+          <Tag color={getTagColor(tag)}>
+            {tag}
+          </Tag>
+        </Link>
+      );
+    }
   });
   return res;
 }
@@ -1052,93 +1185,26 @@ export function inIframe() {
   }
 }
 
-export function getSyncerTableColumns(syncer) {
-  switch (syncer.type) {
-  case "Keycloak":
-    return [
-      {
-        "name": "ID",
-        "type": "string",
-        "casdoorName": "Id",
-        "isHashed": true,
-        "values": [
+export function getOrganization() {
+  const organization = localStorage.getItem("organization");
+  return organization !== null ? organization : "All";
+}
 
-        ],
-      },
-      {
-        "name": "USERNAME",
-        "type": "string",
-        "casdoorName": "Name",
-        "isHashed": true,
-        "values": [
+export function setOrganization(organization) {
+  localStorage.setItem("organization", organization);
+  window.dispatchEvent(new Event("storageOrganizationChanged"));
+}
 
-        ],
-      },
-      {
-        "name": "LAST_NAME+FIRST_NAME",
-        "type": "string",
-        "casdoorName": "DisplayName",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "EMAIL",
-        "type": "string",
-        "casdoorName": "Email",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "EMAIL_VERIFIED",
-        "type": "boolean",
-        "casdoorName": "EmailVerified",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "FIRST_NAME",
-        "type": "string",
-        "casdoorName": "FirstName",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "LAST_NAME",
-        "type": "string",
-        "casdoorName": "LastName",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "CREATED_TIMESTAMP",
-        "type": "string",
-        "casdoorName": "CreatedTime",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "ENABLED",
-        "type": "boolean",
-        "casdoorName": "IsForbidden",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-    ];
-  default:
-    return [];
+export function getRequestOrganization(account) {
+  if (isAdminUser(account)) {
+    return getOrganization() === "All" ? account.owner : getOrganization();
   }
+  return account.owner;
+}
+
+export function isDefaultOrganizationSelected(account) {
+  if (isAdminUser(account)) {
+    return getOrganization() === "All";
+  }
+  return false;
 }

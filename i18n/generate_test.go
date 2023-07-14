@@ -12,42 +12,41 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !skipCi
+// +build !skipCi
+
 package i18n
 
-import (
-	"testing"
-)
-
-func applyToOtherLanguage(category string, language string, i18nData *I18nData) {
-	newData := readI18nFile(category, language)
-	println(newData)
-
-	applyData(i18nData, newData)
-	writeI18nFile(category, language, i18nData)
-}
+import "testing"
 
 func TestGenerateI18nFrontend(t *testing.T) {
-	enData := parseEnData("frontend")
-	writeI18nFile("frontend", "en", enData)
+	data := parseAllWords("frontend")
 
-	applyToOtherLanguage("frontend", "de", enData)
-	applyToOtherLanguage("frontend", "es", enData)
-	applyToOtherLanguage("frontend", "fr", enData)
-	applyToOtherLanguage("frontend", "ja", enData)
-	applyToOtherLanguage("frontend", "ko", enData)
-	applyToOtherLanguage("frontend", "ru", enData)
-	applyToOtherLanguage("frontend", "zh", enData)
+	applyToOtherLanguage("frontend", "en", data)
+	applyToOtherLanguage("frontend", "zh", data)
+	applyToOtherLanguage("frontend", "es", data)
+	applyToOtherLanguage("frontend", "fr", data)
+	applyToOtherLanguage("frontend", "de", data)
+	applyToOtherLanguage("frontend", "id", data)
+	applyToOtherLanguage("frontend", "ja", data)
+	applyToOtherLanguage("frontend", "ko", data)
+	applyToOtherLanguage("frontend", "ru", data)
+	applyToOtherLanguage("frontend", "vi", data)
+	applyToOtherLanguage("frontend", "pt", data)
 }
 
 func TestGenerateI18nBackend(t *testing.T) {
-	enData := parseEnData("backend")
-	writeI18nFile("backend", "en", enData)
+	data := parseAllWords("backend")
 
-	applyToOtherLanguage("backend", "de", enData)
-	applyToOtherLanguage("backend", "es", enData)
-	applyToOtherLanguage("backend", "fr", enData)
-	applyToOtherLanguage("backend", "ja", enData)
-	applyToOtherLanguage("backend", "ko", enData)
-	applyToOtherLanguage("backend", "ru", enData)
-	applyToOtherLanguage("backend", "zh", enData)
+	applyToOtherLanguage("backend", "en", data)
+	applyToOtherLanguage("backend", "zh", data)
+	applyToOtherLanguage("backend", "es", data)
+	applyToOtherLanguage("backend", "fr", data)
+	applyToOtherLanguage("backend", "de", data)
+	applyToOtherLanguage("backend", "id", data)
+	applyToOtherLanguage("backend", "ja", data)
+	applyToOtherLanguage("backend", "ko", data)
+	applyToOtherLanguage("backend", "ru", data)
+	applyToOtherLanguage("backend", "vi", data)
+	applyToOtherLanguage("backend", "pt", data)
 }

@@ -15,7 +15,7 @@
 import {authConfig} from "./Auth";
 import * as Setting from "../Setting";
 
-export function getAccount(query) {
+export function getAccount(query = "") {
   return fetch(`${authConfig.serverUrl}/api/get-account${query}`, {
     method: "GET",
     credentials: "include",
@@ -36,11 +36,10 @@ export function signup(values) {
   }).then(res => res.json());
 }
 
-export function getEmailAndPhone(values) {
-  return fetch(`${authConfig.serverUrl}/api/get-email-and-phone`, {
-    method: "POST",
+export function getEmailAndPhone(organization, username) {
+  return fetch(`${authConfig.serverUrl}/api/get-email-and-phone?organization=${organization}&username=${username}`, {
+    method: "GET",
     credentials: "include",
-    body: JSON.stringify(values),
     headers: {
       "Accept-Language": Setting.getAcceptLanguage(),
     },
@@ -49,7 +48,7 @@ export function getEmailAndPhone(values) {
 
 export function oAuthParamsToQuery(oAuthParams) {
   // login
-  if (oAuthParams === null) {
+  if (oAuthParams === null || oAuthParams === undefined) {
     return "";
   }
 
@@ -133,6 +132,16 @@ export function loginWithSaml(values, param) {
 
 export function getWechatMessageEvent() {
   return fetch(`${Setting.ServerUrl}/api/get-webhook-event`, {
+    method: "GET",
+    credentials: "include",
+    headers: {
+      "Accept-Language": Setting.getAcceptLanguage(),
+    },
+  }).then(res => res.json());
+}
+
+export function getCaptchaStatus(values) {
+  return fetch(`${Setting.ServerUrl}/api/get-captcha-status?organization=${values["organization"]}&user_id=${values["username"]}`, {
     method: "GET",
     credentials: "include",
     headers: {

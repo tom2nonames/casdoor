@@ -19,6 +19,8 @@ import (
 	"strings"
 
 	"github.com/beego/beego/context"
+	"github.com/casdoor/casdoor/conf"
+	"github.com/casdoor/casdoor/i18n"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -46,8 +48,17 @@ func responseError(ctx *context.Context, error string, data ...interface{}) {
 	}
 }
 
+func getAcceptLanguage(ctx *context.Context) string {
+	language := ctx.Request.Header.Get("Accept-Language")
+	return conf.GetLanguage(language)
+}
+
+func T(ctx *context.Context, error string) string {
+	return i18n.Translate(getAcceptLanguage(ctx), error)
+}
+
 func denyRequest(ctx *context.Context) {
-	responseError(ctx, "Unauthorized operation")
+	responseError(ctx, T(ctx, "auth:Unauthorized operation"))
 }
 
 func getUsernameByClientIdSecret(ctx *context.Context) string {
@@ -61,12 +72,29 @@ func getUsernameByClientIdSecret(ctx *context.Context) string {
 		return ""
 	}
 
-	application := object.GetApplicationByClientId(clientId)
+	application, err := object.GetApplicationByClientId(clientId)
+	if err != nil {
+		panic(err)
+	}
+
 	if application == nil || application.ClientSecret != clientSecret {
 		return ""
 	}
 
 	return fmt.Sprintf("app/%s", application.Name)
+}
+
+func getUsernameByKeys(ctx *context.Context) string {
+	accessKey, accessSecret := getKeys(ctx)
+	user, err := object.GetUserByAccessKey(accessKey)
+	if err != nil {
+		panic(err)
+	}
+
+	if user != nil && accessSecret == user.AccessSecret {
+		return user.GetId()
+	}
+	return ""
 }
 
 func getSessionUser(ctx *context.Context) string {

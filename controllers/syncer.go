@@ -37,13 +37,32 @@ func (c *ApiController) GetSyncers() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+	organization := c.Input().Get("organization")
+
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetSyncers(owner)
+		organizationSyncers, err := object.GetOrganizationSyncers(owner, organization)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = organizationSyncers
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetSyncerCount(owner, field, value)))
-		syncers := object.GetPaginationSyncers(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		count, err := object.GetSyncerCount(owner, organization, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		syncers, err := object.GetPaginationSyncers(owner, organization, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(syncers, paginator.Nums())
 	}
 }
@@ -52,13 +71,19 @@ func (c *ApiController) GetSyncers() {
 // @Title GetSyncer
 // @Tag Syncer API
 // @Description get syncer
-// @Param   id    query    string  true        "The id of the syncer"
+// @Param   id     query    string  true        "The id ( owner/name ) of the syncer"
 // @Success 200 {object} object.Syncer The Response object
 // @router /get-syncer [get]
 func (c *ApiController) GetSyncer() {
 	id := c.Input().Get("id")
 
-	c.Data["json"] = object.GetSyncer(id)
+	syncer, err := object.GetSyncer(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = syncer
 	c.ServeJSON()
 }
 
@@ -66,7 +91,7 @@ func (c *ApiController) GetSyncer() {
 // @Title UpdateSyncer
 // @Tag Syncer API
 // @Description update syncer
-// @Param   id    query    string  true        "The id of the syncer"
+// @Param   id     query    string  true        "The id ( owner/name ) of the syncer"
 // @Param   body    body   object.Syncer  true        "The details of the syncer"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-syncer [post]
@@ -131,7 +156,11 @@ func (c *ApiController) DeleteSyncer() {
 // @router /run-syncer [get]
 func (c *ApiController) RunSyncer() {
 	id := c.Input().Get("id")
-	syncer := object.GetSyncer(id)
+	syncer, err := object.GetSyncer(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
 	object.RunSyncer(syncer)
 

@@ -20,7 +20,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -95,9 +97,27 @@ func GetOwnerAndNameFromId(id string) (string, string) {
 	return tokens[0], tokens[1]
 }
 
+func GetOwnerFromId(id string) string {
+	tokens := strings.Split(id, "/")
+	if len(tokens) != 2 {
+		panic(errors.New("GetOwnerAndNameFromId() error, wrong token count for ID: " + id))
+	}
+
+	return tokens[0]
+}
+
 func GetOwnerAndNameFromIdNoCheck(id string) (string, string) {
 	tokens := strings.SplitN(id, "/", 2)
 	return tokens[0], tokens[1]
+}
+
+func GetOwnerAndNameAndOtherFromId(id string) (string, string, string) {
+	tokens := strings.Split(id, "/")
+	if len(tokens) != 3 {
+		panic(errors.New("GetOwnerAndNameAndOtherFromId() error, wrong token count for ID: " + id))
+	}
+
+	return tokens[0], tokens[1], tokens[2]
 }
 
 func GenerateId() string {
@@ -123,8 +143,22 @@ func GenerateSimpleTimeId() string {
 	return t
 }
 
+func GetRandomName() string {
+	rand.Seed(time.Now().UnixNano())
+	const charset = "0123456789abcdefghijklmnopqrstuvwxyz"
+	result := make([]byte, 6)
+	for i := range result {
+		result[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(result)
+}
+
 func GetId(owner, name string) string {
 	return fmt.Sprintf("%s/%s", owner, name)
+}
+
+func GetSessionId(owner, name, application string) string {
+	return fmt.Sprintf("%s/%s/%s", owner, name, application)
 }
 
 func GetMd5Hash(text string) string {
@@ -132,7 +166,7 @@ func GetMd5Hash(text string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func IsStrsEmpty(strs ...string) bool {
+func IsStringsEmpty(strs ...string) bool {
 	for _, str := range strs {
 		if len(str) == 0 {
 			return true
@@ -168,7 +202,7 @@ func GetMinLenStr(strs ...string) string {
 }
 
 func ReadStringFromPath(path string) string {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		panic(err)
 	}
@@ -214,7 +248,7 @@ func IsChinese(str string) bool {
 }
 
 func GetMaskedPhone(phone string) string {
-	return getMaskedPhone(phone)
+	return rePhone.ReplaceAllString(phone, "$1****$2")
 }
 
 func GetMaskedEmail(email string) string {
@@ -235,5 +269,38 @@ func maskString(str string) string {
 		return str
 	} else {
 		return fmt.Sprintf("%c%s%c", str[0], strings.Repeat("*", len(str)-2), str[len(str)-1])
+	}
+}
+
+// GetEndPoint remove scheme from url
+func GetEndPoint(endpoint string) string {
+	for _, prefix := range []string{"https://", "http://"} {
+		endpoint = strings.TrimPrefix(endpoint, prefix)
+	}
+	return endpoint
+}
+
+// HasString reports if slice has input string.
+func HasString(strs []string, str string) bool {
+	for _, i := range strs {
+		if i == str {
+			return true
+		}
+	}
+	return false
+}
+
+func ParseIdToString(input interface{}) (string, error) {
+	switch v := input.(type) {
+	case string:
+		return v, nil
+	case int:
+		return strconv.Itoa(v), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	default:
+		return "", fmt.Errorf("unsupported id type: %T", input)
 	}
 }

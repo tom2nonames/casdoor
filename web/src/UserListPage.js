@@ -14,7 +14,7 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Result, Switch, Table, Upload} from "antd";
+import {Button, Space, Switch, Table, Upload} from "antd";
 import {UploadOutlined} from "@ant-design/icons";
 import moment from "moment";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
@@ -22,29 +22,46 @@ import * as Setting from "./Setting";
 import * as UserBackend from "./backend/UserBackend";
 import i18next from "i18next";
 import BaseListPage from "./BaseListPage";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
 
 class UserListPage extends BaseListPage {
   constructor(props) {
     super(props);
     this.state = {
-      classes: props,
-      organizationName: props.match.params.organizationName,
+      ...this.state,
+      organizationName: this.props.organizationName ?? this.props.match?.params.organizationName ?? this.props.account.owner,
       organization: null,
-      data: [],
-      pagination: {
-        current: 1,
-        pageSize: 10,
-      },
-      loading: false,
-      searchText: "",
-      searchedColumn: "",
-      isAuthorized: true,
     };
+  }
+
+  UNSAFE_componentWillMount() {
+    super.UNSAFE_componentWillMount();
+    this.getOrganization(this.state.organizationName);
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (this.props.match.path !== prevProps.match.path || this.props.organizationName !== prevProps.organizationName) {
+      this.setState({
+        organizationName: this.props.organizationName ?? this.props.match?.params.organizationName,
+      });
+    }
+
+    if (this.state.organizationName !== prevState.organizationName) {
+      this.getOrganization(this.state.organizationName);
+    }
+
+    if (prevProps.groupName !== this.props.groupName || this.state.organizationName !== prevState.organizationName) {
+      this.fetch({
+        pagination: this.state.pagination,
+        searchText: this.state.searchText,
+        searchedColumn: this.state.searchedColumn,
+      });
+    }
   }
 
   newUser() {
     const randomName = Setting.getRandomName();
-    const owner = (this.state.organizationName !== undefined) ? this.state.organizationName : this.props.account.owner;
+    const owner = Setting.isDefaultOrganizationSelected(this.props.account) ? this.state.organizationName : Setting.getRequestOrganization(this.props.account);
     return {
       owner: owner,
       name: `user_${randomName}`,
@@ -56,7 +73,9 @@ class UserListPage extends BaseListPage {
       avatar: `${Setting.StaticBaseUrl}/img/casbin.svg`,
       email: `${randomName}@example.com`,
       phone: Setting.getRandomNumber(),
+      countryCode: this.state.organization.countryCodes?.length > 0 ? this.state.organization.countryCodes[0] : "",
       address: [],
+      groups: this.props.groupName ? [this.props.groupName] : [],
       affiliation: "Example Inc.",
       tag: "staff",
       region: "",
@@ -75,6 +94,7 @@ class UserListPage extends BaseListPage {
     UserBackend.addUser(newUser)
       .then((res) => {
         if (res.status === "ok") {
+          sessionStorage.setItem("userListUrl", window.location.pathname);
           this.props.history.push({pathname: `/users/${newUser.owner}/${newUser.name}`, mode: "add"});
           Setting.showMessage("success", i18next.t("general:Successfully added"));
         } else {
@@ -104,6 +124,26 @@ class UserListPage extends BaseListPage {
       });
   }
 
+  removeUserFromGroup(i) {
+    const user = this.state.data[i];
+    const group = this.props.groupName;
+    UserBackend.removeUserFromGroup({groupName: group, owner: user.owner, name: user.name})
+      .then((res) => {
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully removed"));
+          this.setState({
+            data: Setting.deleteRow(this.state.data, i),
+            pagination: {total: this.state.pagination.total - 1},
+          });
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to remove")}: ${res.msg}`);
+        }
+      })
+      .catch(error => {
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
+      });
+  }
+
   uploadFile(info) {
     const {status, response: res} = info.file;
     if (status === "done") {
@@ -118,6 +158,19 @@ class UserListPage extends BaseListPage {
     } else if (status === "error") {
       Setting.showMessage("error", "File failed to upload");
     }
+  }
+
+  getOrganization(organizationName) {
+    OrganizationBackend.getOrganization("admin", organizationName)
+      .then((res) => {
+        if (res.status === "ok") {
+          this.setState({
+            organization: res.data,
+          });
+        } else {
+          Setting.showMessage("error", `Failed to get organization: ${res.msg}`);
+        }
+      });
   }
 
   renderUpload() {
@@ -142,13 +195,6 @@ class UserListPage extends BaseListPage {
   }
 
   renderTable(users) {
-    // transfer country code to name based on selected language
-    const countries = require("i18n-iso-countries");
-    countries.registerLocale(require("i18n-iso-countries/langs/" + i18next.language + ".json"));
-    for (const index in users) {
-      users[index].region = countries.getName(users[index].region, i18next.language, {select: "official"});
-    }
-
     const columns = [
       {
         title: i18next.t("general:Organization"),
@@ -224,7 +270,7 @@ class UserListPage extends BaseListPage {
         render: (text, record, index) => {
           return (
             <a target="_blank" rel="noreferrer" href={text}>
-              <img src={text} alt={text} width={50} />
+              <img referrerPolicy="no-referrer" src={text} alt={text} width={50} />
             </a>
           );
         },
@@ -274,6 +320,9 @@ class UserListPage extends BaseListPage {
         width: "140px",
         sorter: true,
         ...this.getColumnSearchProps("region"),
+        render: (text, record, index) => {
+          return Setting.initCountries().getName(record.region, Setting.getLanguage(), {select: "official"});
+        },
       },
       {
         title: i18next.t("user:Tag"),
@@ -347,18 +396,30 @@ class UserListPage extends BaseListPage {
         width: "190px",
         fixed: (Setting.isMobile()) ? "false" : "right",
         render: (text, record, index) => {
-          const disabled = (record.owner === this.props.account.owner && record.name === this.props.account.name);
+          const isTreePage = this.props.groupName !== undefined;
+          const disabled = (record.owner === this.props.account.owner && record.name === this.props.account.name) || (record.owner === "built-in" && record.name === "admin");
           return (
-            <div>
-              <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary" onClick={() => this.props.history.push(`/users/${record.owner}/${record.name}`)}>{i18next.t("general:Edit")}</Button>
-              <Popconfirm
-                title={`Sure to delete user: ${record.name} ?`}
+            <Space>
+              <Button size={isTreePage ? "small" : "middle"} type="primary" onClick={() => {
+                sessionStorage.setItem("userListUrl", window.location.pathname);
+                this.props.history.push(`/users/${record.owner}/${record.name}`);
+              }}>{i18next.t("general:Edit")}
+              </Button>
+              {isTreePage ?
+                <PopconfirmModal
+                  text={i18next.t("general:remove")}
+                  title={i18next.t("general:Sure to remove") + `: ${record.name} ?`}
+                  onConfirm={() => this.removeUserFromGroup(index)}
+                  disabled={disabled}
+                  size="small"
+                /> : null}
+              <PopconfirmModal
+                title={i18next.t("general:Sure to delete") + `: ${record.name} ?`}
                 onConfirm={() => this.deleteUser(index)}
                 disabled={disabled}
-              >
-                <Button disabled={disabled} style={{marginBottom: "10px"}} type="primary" danger>{i18next.t("general:Delete")}</Button>
-              </Popconfirm>
-            </div>
+                size={isTreePage ? "small" : "default"}
+              />
+            </Space>
           );
         },
       },
@@ -370,17 +431,6 @@ class UserListPage extends BaseListPage {
       showSizeChanger: true,
       showTotal: () => i18next.t("general:{total} in total").replace("{total}", this.state.pagination.total),
     };
-
-    if (!this.state.isAuthorized) {
-      return (
-        <Result
-          status="403"
-          title="403 Unauthorized"
-          subTitle={i18next.t("general:Sorry, you do not have permission to access this page or logged in status invalid.")}
-          extra={<a href="/"><Button type="primary">{i18next.t("general:Back Home")}</Button></a>}
-        />
-      );
-    }
 
     return (
       <div>
@@ -405,12 +455,14 @@ class UserListPage extends BaseListPage {
     const field = params.searchedColumn, value = params.searchText;
     const sortField = params.sortField, sortOrder = params.sortOrder;
     this.setState({loading: true});
-    if (this.state.organizationName === undefined) {
-      (Setting.isAdminUser(this.props.account) ? UserBackend.getGlobalUsers(params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder) : UserBackend.getUsers(this.props.account.owner, params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder))
+    if (this.props.match?.path === "/users") {
+      (Setting.isDefaultOrganizationSelected(this.props.account) ? UserBackend.getGlobalUsers(params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder) : UserBackend.getUsers(Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder))
         .then((res) => {
+          this.setState({
+            loading: false,
+          });
           if (res.status === "ok") {
             this.setState({
-              loading: false,
               data: res.data,
               pagination: {
                 ...params.pagination,
@@ -419,26 +471,26 @@ class UserListPage extends BaseListPage {
               searchText: params.searchText,
               searchedColumn: params.searchedColumn,
             });
-
-            const users = res.data;
-            if (users.length > 0) {
-              this.getOrganization(users[0].owner);
-            }
           } else {
-            if (res.msg.includes("Unauthorized")) {
+            if (Setting.isResponseDenied(res)) {
               this.setState({
-                loading: false,
                 isAuthorized: false,
               });
+            } else {
+              Setting.showMessage("error", res.msg);
             }
           }
         });
     } else {
-      UserBackend.getUsers(this.state.organizationName, params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+      (this.props.groupName ?
+        UserBackend.getUsers(this.state.organizationName, params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder, this.props.groupName) :
+        UserBackend.getUsers(this.state.organizationName, params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder))
         .then((res) => {
+          this.setState({
+            loading: false,
+          });
           if (res.status === "ok") {
             this.setState({
-              loading: false,
               data: res.data,
               pagination: {
                 ...params.pagination,
@@ -447,31 +499,18 @@ class UserListPage extends BaseListPage {
               searchText: params.searchText,
               searchedColumn: params.searchedColumn,
             });
-
-            const users = res.data;
-            if (users.length > 0) {
-              this.getOrganization(users[0].owner);
-            }
           } else {
-            if (res.msg.includes("Unauthorized")) {
+            if (Setting.isResponseDenied(res)) {
               this.setState({
-                loading: false,
                 isAuthorized: false,
               });
+            } else {
+              Setting.showMessage("error", res.msg);
             }
           }
         });
     }
   };
-
-  getOrganization(organizationName) {
-    OrganizationBackend.getOrganization("admin", organizationName)
-      .then((organization) => {
-        this.setState({
-          organization: organization,
-        });
-      });
-  }
 }
 
 export default UserListPage;

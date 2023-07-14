@@ -133,6 +133,11 @@ class OAuthWidget extends React.Component {
       }
     }
 
+    let linkButtonWidth = "110px";
+    if (Setting.getLanguage() === "id") {
+      linkButtonWidth = "160px";
+    }
+
     return (
       <Row key={provider.name} style={{marginTop: "20px"}} >
         <Col style={{marginTop: "5px"}} span={this.props.labelSpan}>
@@ -150,7 +155,7 @@ class OAuthWidget extends React.Component {
           <span style={{width: this.props.labelSpan === 3 ? "300px" : "200px", display: (Setting.isMobile()) ? "inline" : "inline-block"}}>
             {
               linkedValue === "" ? (
-                "(empty)"
+                `(${i18next.t("general:empty")})`
               ) : (
                 profileUrl === "" ? name : (
                   <a target="_blank" rel="noreferrer" href={profileUrl}>
@@ -165,10 +170,10 @@ class OAuthWidget extends React.Component {
           {
             linkedValue === "" ? (
               <a key={provider.displayName} href={user.id !== account.id ? null : Provider.getAuthUrl(application, provider, "link")}>
-                <Button style={{marginLeft: "20px", width: "80px"}} type="primary" disabled={user.id !== account.id}>{i18next.t("user:Link")}</Button>
+                <Button style={{marginLeft: "20px", width: linkButtonWidth}} type="primary" disabled={user.id !== account.id}>{i18next.t("user:Link")}</Button>
               </a>
             ) : (
-              <Button disabled={!providerItem.canUnlink && !account.isGlobalAdmin} style={{marginLeft: "20px", width: "80px"}} onClick={() => this.unlinkUser(provider.type)}>{i18next.t("user:Unlink")}</Button>
+              <Button disabled={!providerItem.canUnlink && !account.isGlobalAdmin} style={{marginLeft: "20px", width: linkButtonWidth}} onClick={() => this.unlinkUser(provider.type)}>{i18next.t("user:Unlink")}</Button>
             )
           }
         </Col>

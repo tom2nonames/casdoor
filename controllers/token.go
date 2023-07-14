@@ -16,7 +16,6 @@ package controllers
 
 import (
 	"encoding/json"
-	"net/http"
 
 	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
@@ -40,13 +39,31 @@ func (c *ApiController) GetTokens() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+	organization := c.Input().Get("organization")
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetTokens(owner)
+		token, err := object.GetTokens(owner, organization)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = token
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetTokenCount(owner, field, value)))
-		tokens := object.GetPaginationTokens(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		count, err := object.GetTokenCount(owner, organization, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		tokens, err := object.GetPaginationTokens(owner, organization, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(tokens, paginator.Nums())
 	}
 }
@@ -55,13 +72,18 @@ func (c *ApiController) GetTokens() {
 // @Title GetToken
 // @Tag Token API
 // @Description get token
-// @Param   id     query    string  true        "The id of token"
+// @Param   id     query    string  true        "The id ( owner/name ) of token"
 // @Success 200 {object} object.Token The Response object
 // @router /get-token [get]
 func (c *ApiController) GetToken() {
 	id := c.Input().Get("id")
+	token, err := object.GetToken(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
-	c.Data["json"] = object.GetToken(id)
+	c.Data["json"] = token
 	c.ServeJSON()
 }
 
@@ -69,7 +91,7 @@ func (c *ApiController) GetToken() {
 // @Title UpdateToken
 // @Tag Token API
 // @Description update token
-// @Param   id     query    string  true        "The id of token"
+// @Param   id     query    string  true        "The id ( owner/name ) of token"
 // @Param   body    body   object.Token  true        "Details of the token"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-token [post]
@@ -125,40 +147,6 @@ func (c *ApiController) DeleteToken() {
 	c.ServeJSON()
 }
 
-// GetOAuthCode
-// @Title GetOAuthCode
-// @Tag Token API
-// @Description get OAuth code
-// @Param   user_id     query    string  true        "The id of user"
-// @Param   client_id     query    string  true        "OAuth client id"
-// @Param   response_type     query    string  true        "OAuth response type"
-// @Param   redirect_uri     query    string  true        "OAuth redirect URI"
-// @Param   scope     query    string  true        "OAuth scope"
-// @Param   state     query    string  true        "OAuth state"
-// @Success 200 {object} object.TokenWrapper The Response object
-// @router /login/oauth/code [post]
-func (c *ApiController) GetOAuthCode() {
-	userId := c.Input().Get("user_id")
-	clientId := c.Input().Get("client_id")
-	responseType := c.Input().Get("response_type")
-	redirectUri := c.Input().Get("redirect_uri")
-	scope := c.Input().Get("scope")
-	state := c.Input().Get("state")
-	nonce := c.Input().Get("nonce")
-
-	challengeMethod := c.Input().Get("code_challenge_method")
-	codeChallenge := c.Input().Get("code_challenge")
-
-	if challengeMethod != "S256" && challengeMethod != "null" && challengeMethod != "" {
-		c.ResponseError(c.T("auth:Challenge method should be S256"))
-		return
-	}
-	host := c.Ctx.Request.Host
-
-	c.Data["json"] = object.GetOAuthCode(userId, clientId, responseType, redirectUri, scope, state, nonce, codeChallenge, host, c.GetAcceptLanguage())
-	c.ServeJSON()
-}
-
 // GetOAuthToken
 // @Title GetOAuthToken
 // @Tag Token API
@@ -173,6 +161,7 @@ func (c *ApiController) GetOAuthCode() {
 // @router /login/oauth/access_token [post]
 func (c *ApiController) GetOAuthToken() {
 	grantType := c.Input().Get("grant_type")
+	refreshToken := c.Input().Get("refresh_token")
 	clientId := c.Input().Get("client_id")
 	clientSecret := c.Input().Get("client_secret")
 	code := c.Input().Get("code")
@@ -193,6 +182,7 @@ func (c *ApiController) GetOAuthToken() {
 			clientId = tokenRequest.ClientId
 			clientSecret = tokenRequest.ClientSecret
 			grantType = tokenRequest.GrantType
+			refreshToken = tokenRequest.RefreshToken
 			code = tokenRequest.Code
 			verifier = tokenRequest.Verifier
 			scope = tokenRequest.Scope
@@ -203,8 +193,13 @@ func (c *ApiController) GetOAuthToken() {
 		}
 	}
 	host := c.Ctx.Request.Host
+	oAuthtoken, err := object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage())
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
-	c.Data["json"] = object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, tag, avatar, c.GetAcceptLanguage())
+	c.Data["json"] = oAuthtoken
 	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }
@@ -242,30 +237,14 @@ func (c *ApiController) RefreshToken() {
 		}
 	}
 
-	c.Data["json"] = object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
-	c.SetTokenErrorHttpStatus()
-	c.ServeJSON()
-}
-
-// TokenLogout
-// @Title TokenLogout
-// @Tag Token API
-// @Description delete token by AccessToken
-// @Param   id_token_hint     query    string  true        "id_token_hint"
-// @Param   post_logout_redirect_uri    query    string  false      "post_logout_redirect_uri"
-// @Param   state     query    string  true        "state"
-// @Success 200 {object} controllers.Response The Response object
-// @router /login/oauth/logout [get]
-func (c *ApiController) TokenLogout() {
-	token := c.Input().Get("id_token_hint")
-	flag, application := object.DeleteTokenByAccessToken(token)
-	redirectUri := c.Input().Get("post_logout_redirect_uri")
-	state := c.Input().Get("state")
-	if application != nil && application.IsRedirectUriValid(redirectUri) {
-		c.Ctx.Redirect(http.StatusFound, redirectUri+"?state="+state)
+	refreshToken2, err := object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
+	if err != nil {
+		c.ResponseError(err.Error())
 		return
 	}
-	c.Data["json"] = wrapActionResponse(flag)
+
+	c.Data["json"] = refreshToken2
+	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }
 
@@ -299,7 +278,12 @@ func (c *ApiController) IntrospectToken() {
 			return
 		}
 	}
-	application := object.GetApplicationByClientId(clientId)
+	application, err := object.GetApplicationByClientId(clientId)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if application == nil || application.ClientSecret != clientSecret {
 		c.ResponseError(c.T("token:Invalid application or wrong clientSecret"))
 		c.Data["json"] = &object.TokenError{
@@ -308,7 +292,12 @@ func (c *ApiController) IntrospectToken() {
 		c.SetTokenErrorHttpStatus()
 		return
 	}
-	token := object.GetTokenByTokenAndApplication(tokenValue, application.Name)
+	token, err := object.GetTokenByTokenAndApplication(tokenValue, application.Name)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if token == nil {
 		c.Data["json"] = &object.IntrospectionResponse{Active: false}
 		c.ServeJSON()
@@ -336,7 +325,7 @@ func (c *ApiController) IntrospectToken() {
 		Sub:       jwtToken.Subject,
 		Aud:       jwtToken.Audience,
 		Iss:       jwtToken.Issuer,
-		Jti:       jwtToken.Id,
+		Jti:       jwtToken.ID,
 	}
 	c.ServeJSON()
 }

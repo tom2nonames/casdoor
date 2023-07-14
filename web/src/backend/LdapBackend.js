@@ -16,7 +16,7 @@ import * as Setting from "../Setting";
 
 export function getLdaps(owner) {
   return fetch(`${Setting.ServerUrl}/api/get-ldaps?owner=${owner}`, {
-    method: "POST",
+    method: "GET",
     credentials: "include",
     headers: {
       "Accept-Language": Setting.getAcceptLanguage(),
@@ -24,9 +24,9 @@ export function getLdaps(owner) {
   }).then(res => res.json());
 }
 
-export function getLdap(id) {
-  return fetch(`${Setting.ServerUrl}/api/get-ldap?id=${id}`, {
-    method: "POST",
+export function getLdap(owner, name) {
+  return fetch(`${Setting.ServerUrl}/api/get-ldap?id=${owner}/${encodeURIComponent(name)}`, {
+    method: "GET",
     credentials: "include",
     headers: {
       "Accept-Language": Setting.getAcceptLanguage(),
@@ -67,11 +67,10 @@ export function updateLdap(body) {
   }).then(res => res.json());
 }
 
-export function getLdapUser(body) {
-  return fetch(`${Setting.ServerUrl}/api/get-ldap-user`, {
-    method: "POST",
+export function getLdapUser(owner, name) {
+  return fetch(`${Setting.ServerUrl}/api/get-ldap-users?id=${owner}/${encodeURIComponent(name)}`, {
+    method: "GET",
     credentials: "include",
-    body: JSON.stringify(body),
     headers: {
       "Accept-Language": Setting.getAcceptLanguage(),
     },
@@ -80,17 +79,6 @@ export function getLdapUser(body) {
 
 export function syncUsers(owner, ldapId, body) {
   return fetch(`${Setting.ServerUrl}/api/sync-ldap-users?owner=${owner}&ldapId=${ldapId}`, {
-    method: "POST",
-    credentials: "include",
-    body: JSON.stringify(body),
-    headers: {
-      "Accept-Language": Setting.getAcceptLanguage(),
-    },
-  }).then(res => res.json());
-}
-
-export function checkLdapUsersExist(owner, body) {
-  return fetch(`${Setting.ServerUrl}/api/check-ldap-users-exist?owner=${owner}`, {
     method: "POST",
     credentials: "include",
     body: JSON.stringify(body),

@@ -19,7 +19,7 @@ import (
 
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casdoor/casdoor/util"
-	"xorm.io/core"
+	"github.com/xorm-io/core"
 )
 
 type Model struct {
@@ -27,107 +27,114 @@ type Model struct {
 	Name        string `xorm:"varchar(100) notnull pk" json:"name"`
 	CreatedTime string `xorm:"varchar(100)" json:"createdTime"`
 	DisplayName string `xorm:"varchar(100)" json:"displayName"`
+	Description string `xorm:"varchar(100)" json:"description"`
 
 	ModelText string `xorm:"mediumtext" json:"modelText"`
 	IsEnabled bool   `json:"isEnabled"`
 }
 
-func GetModelCount(owner, field, value string) int {
+func GetModelCount(owner, field, value string) (int64, error) {
 	session := GetSession(owner, -1, -1, field, value, "", "")
-	count, err := session.Count(&Model{})
-	if err != nil {
-		panic(err)
-	}
-
-	return int(count)
+	return session.Count(&Model{})
 }
 
-func GetModels(owner string) []*Model {
+func GetModels(owner string) ([]*Model, error) {
 	models := []*Model{}
 	err := adapter.Engine.Desc("created_time").Find(&models, &Model{Owner: owner})
 	if err != nil {
-		panic(err)
+		return models, err
 	}
 
-	return models
+	return models, nil
 }
 
-func GetPaginationModels(owner string, offset, limit int, field, value, sortField, sortOrder string) []*Model {
+func GetPaginationModels(owner string, offset, limit int, field, value, sortField, sortOrder string) ([]*Model, error) {
 	models := []*Model{}
 	session := GetSession(owner, offset, limit, field, value, sortField, sortOrder)
 	err := session.Find(&models)
 	if err != nil {
-		panic(err)
+		return models, err
 	}
 
-	return models
+	return models, nil
 }
 
-func getModel(owner string, name string) *Model {
+func getModel(owner string, name string) (*Model, error) {
 	if owner == "" || name == "" {
-		return nil
+		return nil, nil
 	}
 
-	model := Model{Owner: owner, Name: name}
-	existed, err := adapter.Engine.Get(&model)
+	m := Model{Owner: owner, Name: name}
+	existed, err := adapter.Engine.Get(&m)
 	if err != nil {
-		panic(err)
+		return &m, err
 	}
 
 	if existed {
-		return &model
+		return &m, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func GetModel(id string) *Model {
+func GetModel(id string) (*Model, error) {
 	owner, name := util.GetOwnerAndNameFromId(id)
 	return getModel(owner, name)
 }
 
-func UpdateModel(id string, modelObj *Model) bool {
+func UpdateModelWithCheck(id string, modelObj *Model) error {
+	// check model grammar
+	_, err := model.NewModelFromString(modelObj.ModelText)
+	if err != nil {
+		return err
+	}
+	_, err = UpdateModel(id, modelObj)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func UpdateModel(id string, modelObj *Model) (bool, error) {
 	owner, name := util.GetOwnerAndNameFromId(id)
-	if getModel(owner, name) == nil {
-		return false
+	if m, err := getModel(owner, name); err != nil {
+		return false, err
+	} else if m == nil {
+		return false, nil
 	}
 
 	if name != modelObj.Name {
 		err := modelChangeTrigger(name, modelObj.Name)
 		if err != nil {
-			return false
+			return false, err
 		}
-	}
-	// check model grammar
-	_, err := model.NewModelFromString(modelObj.ModelText)
-	if err != nil {
-		panic(err)
 	}
 
 	affected, err := adapter.Engine.ID(core.PK{owner, name}).AllCols().Update(modelObj)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, err
 }
 
-func AddModel(model *Model) bool {
+func AddModel(model *Model) (bool, error) {
 	affected, err := adapter.Engine.Insert(model)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
-func DeleteModel(model *Model) bool {
+func DeleteModel(model *Model) (bool, error) {
 	affected, err := adapter.Engine.ID(core.PK{model.Owner, model.Name}).Delete(&Model{})
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
 func (model *Model) GetId() string {
@@ -151,4 +158,8 @@ func modelChangeTrigger(oldName string, newName string) error {
 	}
 
 	return session.Commit()
+}
+
+func HasRoleDefinition(m model.Model) bool {
+	return m["g"] != nil
 }

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"strings"
 
 	"github.com/casdoor/casdoor/conf"
@@ -29,11 +30,7 @@ import (
 var isCloudIntranet bool
 
 func init() {
-	var err error
-	isCloudIntranet, err = conf.GetConfigBool("isCloudIntranet")
-	if err != nil {
-		// panic(err)
-	}
+	isCloudIntranet = conf.GetConfigBool("isCloudIntranet")
 }
 
 func getProviderEndpoint(provider *Provider) string {
@@ -52,6 +49,25 @@ func escapePath(path string) string {
 
 	res := strings.Join(tokens, "/")
 	return res
+}
+
+func GetTruncatedPath(provider *Provider, fullFilePath string, limit int) string {
+	pathPrefix := util.UrlJoin(util.GetUrlPath(provider.Domain), provider.PathPrefix)
+
+	dir, file := filepath.Split(fullFilePath)
+	ext := filepath.Ext(file)
+	fileName := strings.TrimSuffix(file, ext)
+	for {
+		escapedString := escapePath(escapePath(fullFilePath))
+		if len(escapedString) < limit-len(pathPrefix) {
+			break
+		}
+		rs := []rune(fileName)
+		fileName = string(rs[0 : len(rs)-1])
+		fullFilePath = dir + fileName + ext
+	}
+
+	return fullFilePath
 }
 
 func GetUploadFileUrl(provider *Provider, fullFilePath string, hasTimestamp bool) (string, string) {
@@ -74,18 +90,23 @@ func GetUploadFileUrl(provider *Provider, fullFilePath string, hasTimestamp bool
 	}
 
 	fileUrl := util.UrlJoin(host, escapePath(objectKey))
+
 	if hasTimestamp {
 		fileUrl = fmt.Sprintf("%s?t=%s", fileUrl, util.GetCurrentUnixTime())
+	}
+
+	if provider.Type == "Tencent Cloud COS" {
+		objectKey = escapePath(objectKey)
 	}
 
 	return fileUrl, objectKey
 }
 
-func uploadFile(provider *Provider, fullFilePath string, fileBuffer *bytes.Buffer) (string, string, error) {
+func uploadFile(provider *Provider, fullFilePath string, fileBuffer *bytes.Buffer, lang string) (string, string, error) {
 	endpoint := getProviderEndpoint(provider)
 	storageProvider := storage.GetStorageProvider(provider.Type, provider.ClientId, provider.ClientSecret, provider.RegionId, provider.Bucket, endpoint)
 	if storageProvider == nil {
-		return "", "", fmt.Errorf("the provider type: %s is not supported", provider.Type)
+		return "", "", fmt.Errorf(i18n.Translate(lang, "storage:The provider type: %s is not supported"), provider.Type)
 	}
 
 	if provider.Domain == "" {
@@ -103,7 +124,7 @@ func uploadFile(provider *Provider, fullFilePath string, fileBuffer *bytes.Buffe
 	return fileUrl, objectKey, nil
 }
 
-func UploadFileSafe(provider *Provider, fullFilePath string, fileBuffer *bytes.Buffer) (string, string, error) {
+func UploadFileSafe(provider *Provider, fullFilePath string, fileBuffer *bytes.Buffer, lang string) (string, string, error) {
 	// check fullFilePath is there security issue
 	if strings.Contains(fullFilePath, "..") {
 		return "", "", fmt.Errorf("the fullFilePath: %s is not allowed", fullFilePath)
@@ -114,7 +135,7 @@ func UploadFileSafe(provider *Provider, fullFilePath string, fileBuffer *bytes.B
 	var err error
 	times := 0
 	for {
-		fileUrl, objectKey, err = uploadFile(provider, fullFilePath, fileBuffer)
+		fileUrl, objectKey, err = uploadFile(provider, fullFilePath, fileBuffer, lang)
 		if err != nil {
 			times += 1
 			if times >= 5 {
