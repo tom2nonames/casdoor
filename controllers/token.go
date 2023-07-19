@@ -255,7 +255,7 @@ func (c *ApiController) GetOAuthToken() {
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/refresh_token [post]
 func (c *ApiController) RefreshToken() {
-	sessionID := c.Ctx.Input.CruSession.SessionID()
+	//sessionID := c.Ctx.Input.CruSession.SessionID()
 	grantType := c.Input().Get("grant_type")
 	refreshToken := c.Input().Get("refresh_token")
 	scope := c.Input().Get("scope")
@@ -275,7 +275,8 @@ func (c *ApiController) RefreshToken() {
 		}
 	}
 
-	refreshToken2, err := object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host, sessionID)
+	//refreshToken2, err := object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host, sessionID)
+	refreshToken2, err := object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return

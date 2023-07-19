@@ -375,7 +375,7 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 	case "client_credentials": // Client Credentials Grant
 		token, tokenError, err = GetClientCredentialsToken(application, clientSecret, scope, host, sessionID)
 	case "refresh_token":
-		refreshToken2, err := RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host, sessionID)
+		refreshToken2, err := RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
 		if err != nil {
 			return nil, err
 		}
@@ -414,7 +414,7 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 	return tokenWrapper, nil
 }
 
-func RefreshToken(grantType string, refreshToken string, scope string, clientId string, clientSecret string, host string, sessionId string) (interface{}, error) {
+func RefreshToken(grantType string, refreshToken string, scope string, clientId string, clientSecret string, host string) (interface{}, error) {
 	// check parameters
 	if grantType != "refresh_token" {
 		return &TokenError{
@@ -454,7 +454,8 @@ func RefreshToken(grantType string, refreshToken string, scope string, clientId 
 		return nil, err
 	}
 
-	_, err = ParseJwtToken(refreshToken, cert)
+	//_, err = ParseJwtToken(refreshToken, cert)
+	claims, err := ParseJwtToken(refreshToken, cert)
 	if err != nil {
 		return &TokenError{
 			Error:            InvalidGrant,
@@ -478,7 +479,7 @@ func RefreshToken(grantType string, refreshToken string, scope string, clientId 
 	if err != nil {
 		return nil, err
 	}
-	newAccessToken, newRefreshToken, tokenName, err := generateJwtToken(application, user, "", scope, host, sessionId)
+	newAccessToken, newRefreshToken, tokenName, err := generateJwtToken(application, user, "", scope, host, claims.SessionID)
 	if err != nil {
 		return &TokenError{
 			Error:            EndpointError,
