@@ -21,17 +21,10 @@ import (
 	"github.com/casdoor/casdoor/util"
 )
 
-type LdapServer struct {
-	Host   string `json:"host"`
-	Port   int    `json:"port"`
-	Admin  string `json:"admin"`
-	Passwd string `json:"passwd"`
-	BaseDn string `json:"baseDn"`
-}
-
 type LdapResp struct {
 	// Groups []LdapRespGroup `json:"groups"`
-	Users []object.LdapRespUser `json:"users"`
+	Users      []object.LdapUser `json:"users"`
+	ExistUuids []string          `json:"existUuids"`
 }
 
 //type LdapRespGroup struct {
@@ -40,25 +33,25 @@ type LdapResp struct {
 //}
 
 type LdapSyncResp struct {
-	Exist  []object.LdapRespUser `json:"exist"`
-	Failed []object.LdapRespUser `json:"failed"`
+	Exist  []object.LdapUser `json:"exist"`
+	Failed []object.LdapUser `json:"failed"`
 }
 
-// GetLdapUser
+// GetLdapUsers
 // @Tag Account API
 // @Title GetLdapser
-// @router /get-ldap-user [post]
-func (c *ApiController) GetLdapUser() {
-	ldapServer := LdapServer{}
-	err := json.Unmarshal(c.Ctx.Input.RequestBody, &ldapServer)
-	if err != nil || util.IsStringsEmpty(ldapServer.Host, ldapServer.Admin, ldapServer.Passwd, ldapServer.BaseDn) {
-		c.ResponseError(c.T("general:Missing parameter"))
+// @router /get-ldap-users [get]
+func (c *ApiController) GetLdapUsers() {
+	id := c.Input().Get("id")
+
+	_, ldapId := util.GetOwnerAndNameFromId(id)
+	ldapServer, err := object.GetLdap(ldapId)
+	if err != nil {
+		c.ResponseError(err.Error())
 		return
 	}
 
-	var resp LdapResp
-
-	conn, err := object.GetLdapConn(ldapServer.Host, ldapServer.Port, ldapServer.Admin, ldapServer.Passwd)
+	conn, err := ldapServer.GetLdapConn()
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
@@ -77,28 +70,27 @@ func (c *ApiController) GetLdapUser() {
 	//	})
 	//}
 
-	users, err := conn.GetLdapUsers(ldapServer.BaseDn)
+	users, err := conn.GetLdapUsers(ldapServer)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	for _, user := range users {
-		resp.Users = append(resp.Users, object.LdapRespUser{
-			UidNumber: user.UidNumber,
-			Uid:       user.Uid,
-			Cn:        user.Cn,
-			GroupId:   user.GidNumber,
-			// GroupName: groupsMap[user.GidNumber].Cn,
-			Uuid:    user.Uuid,
-			Email:   util.GetMaxLenStr(user.Mail, user.Email, user.EmailAddress),
-			Phone:   util.GetMaxLenStr(user.TelephoneNumber, user.Mobile, user.MobileTelephoneNumber),
-			Address: util.GetMaxLenStr(user.RegisteredAddress, user.PostalAddress),
-		})
+	uuids := make([]string, len(users))
+	for i, user := range users {
+		uuids[i] = user.GetLdapUuid()
+	}
+	existUuids, err := object.GetExistUuids(ldapServer.Owner, uuids)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
 	}
 
-	c.Data["json"] = Response{Status: "ok", Data: resp}
-	c.ServeJSON()
+	resp := LdapResp{
+		Users:      object.AutoAdjustLdapUser(users),
+		ExistUuids: existUuids,
+	}
+	c.ResponseOk(resp)
 }
 
 // GetLdaps
@@ -108,8 +100,7 @@ func (c *ApiController) GetLdapUser() {
 func (c *ApiController) GetLdaps() {
 	owner := c.Input().Get("owner")
 
-	c.Data["json"] = Response{Status: "ok", Data: object.GetLdaps(owner)}
-	c.ServeJSON()
+	c.ResponseOk(object.GetMaskedLdaps(object.GetLdaps(owner)))
 }
 
 // GetLdap
@@ -124,8 +115,8 @@ func (c *ApiController) GetLdap() {
 		return
 	}
 
-	c.Data["json"] = Response{Status: "ok", Data: object.GetLdap(id)}
-	c.ServeJSON()
+	_, name := util.GetOwnerAndNameFromId(id)
+	c.ResponseOk(object.GetMaskedLdap(object.GetLdap(name)))
 }
 
 // AddLdap
@@ -136,27 +127,32 @@ func (c *ApiController) AddLdap() {
 	var ldap object.Ldap
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &ldap)
 	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	if util.IsStringsEmpty(ldap.Owner, ldap.ServerName, ldap.Host, ldap.Username, ldap.Password, ldap.BaseDn) {
 		c.ResponseError(c.T("general:Missing parameter"))
 		return
 	}
 
-	if util.IsStringsEmpty(ldap.Owner, ldap.ServerName, ldap.Host, ldap.Admin, ldap.Passwd, ldap.BaseDn) {
-		c.ResponseError(c.T("general:Missing parameter"))
+	if ok, err := object.CheckLdapExist(&ldap); err != nil {
+		c.ResponseError(err.Error())
 		return
-	}
-
-	if object.CheckLdapExist(&ldap) {
+	} else if ok {
 		c.ResponseError(c.T("ldap:Ldap server exist"))
 		return
 	}
 
-	affected := object.AddLdap(&ldap)
-	resp := wrapActionResponse(affected)
-	if affected {
-		resp.Data2 = ldap
-	}
+	resp := wrapActionResponse(object.AddLdap(&ldap))
+	resp.Data2 = ldap
+
 	if ldap.AutoSync != 0 {
-		object.GetLdapAutoSynchronizer().StartAutoSync(ldap.Id)
+		err = object.GetLdapAutoSynchronizer().StartAutoSync(ldap.Id)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
 	}
 
 	c.Data["json"] = resp
@@ -170,24 +166,34 @@ func (c *ApiController) AddLdap() {
 func (c *ApiController) UpdateLdap() {
 	var ldap object.Ldap
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &ldap)
-	if err != nil || util.IsStringsEmpty(ldap.Owner, ldap.ServerName, ldap.Host, ldap.Admin, ldap.Passwd, ldap.BaseDn) {
+	if err != nil || util.IsStringsEmpty(ldap.Owner, ldap.ServerName, ldap.Host, ldap.Username, ldap.Password, ldap.BaseDn) {
 		c.ResponseError(c.T("general:Missing parameter"))
 		return
 	}
 
-	prevLdap := object.GetLdap(ldap.Id)
-	affected := object.UpdateLdap(&ldap)
-	resp := wrapActionResponse(affected)
-	if affected {
-		resp.Data2 = ldap
+	prevLdap, err := object.GetLdap(ldap.Id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
 	}
+
+	affected, err := object.UpdateLdap(&ldap)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if ldap.AutoSync != 0 {
-		object.GetLdapAutoSynchronizer().StartAutoSync(ldap.Id)
+		err := object.GetLdapAutoSynchronizer().StartAutoSync(ldap.Id)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
 	} else if ldap.AutoSync == 0 && prevLdap.AutoSync != 0 {
 		object.GetLdapAutoSynchronizer().StopAutoSync(ldap.Id)
 	}
 
-	c.Data["json"] = resp
+	c.Data["json"] = wrapActionResponse(affected)
 	c.ServeJSON()
 }
 
@@ -203,8 +209,15 @@ func (c *ApiController) DeleteLdap() {
 		return
 	}
 
+	affected, err := object.DeleteLdap(&ldap)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	object.GetLdapAutoSynchronizer().StopAutoSync(ldap.Id)
-	c.Data["json"] = wrapActionResponse(object.DeleteLdap(&ldap))
+
+	c.Data["json"] = wrapActionResponse(affected)
 	c.ServeJSON()
 }
 
@@ -213,39 +226,26 @@ func (c *ApiController) DeleteLdap() {
 // @Title SyncLdapUsers
 // @router /sync-ldap-users [post]
 func (c *ApiController) SyncLdapUsers() {
-	owner := c.Input().Get("owner")
-	ldapId := c.Input().Get("ldapId")
-	var users []object.LdapRespUser
+	id := c.Input().Get("id")
+
+	owner, ldapId := util.GetOwnerAndNameFromId(id)
+	var users []object.LdapUser
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &users)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	object.UpdateLdapSyncTime(ldapId)
-
-	exist, failed := object.SyncLdapUsers(owner, users, ldapId)
-	c.Data["json"] = &Response{Status: "ok", Data: &LdapSyncResp{
-		Exist:  *exist,
-		Failed: *failed,
-	}}
-	c.ServeJSON()
-}
-
-// CheckLdapUsersExist
-// @Tag Account API
-// @Title CheckLdapUserExist
-// @router /check-ldap-users-exist [post]
-func (c *ApiController) CheckLdapUsersExist() {
-	owner := c.Input().Get("owner")
-	var uuids []string
-	err := json.Unmarshal(c.Ctx.Input.RequestBody, &uuids)
+	err = object.UpdateLdapSyncTime(ldapId)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	exist := object.CheckLdapUuidExist(owner, uuids)
-	c.Data["json"] = &Response{Status: "ok", Data: exist}
-	c.ServeJSON()
+	exist, failed, _ := object.SyncLdapUsers(owner, users, ldapId)
+
+	c.ResponseOk(&LdapSyncResp{
+		Exist:  exist,
+		Failed: failed,
+	})
 }

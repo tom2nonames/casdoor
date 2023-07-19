@@ -25,9 +25,9 @@ import * as ResourceBackend from "./backend/ResourceBackend";
 import SignupPage from "./auth/SignupPage";
 import LoginPage from "./auth/LoginPage";
 import i18next from "i18next";
-import UrlTable from "./UrlTable";
-import ProviderTable from "./ProviderTable";
-import SignupTable from "./SignupTable";
+import UrlTable from "./table/UrlTable";
+import ProviderTable from "./table/ProviderTable";
+import SignupTable from "./table/SignupTable";
 import PromptPage from "./auth/PromptPage";
 import copy from "copy-to-clipboard";
 
@@ -112,20 +112,36 @@ class ApplicationEditPage extends React.Component {
   UNSAFE_componentWillMount() {
     this.getApplication();
     this.getOrganizations();
-    this.getCerts();
     this.getProviders();
     this.getSamlMetadata();
   }
 
   getApplication() {
     ApplicationBackend.getApplication("admin", this.state.applicationName)
-      .then((application) => {
-        if (application.grantTypes === null || application.grantTypes === undefined || application.grantTypes.length === 0) {
-          application.grantTypes = ["authorization_code"];
+      .then((res) => {
+        if (res === null) {
+          this.props.history.push("/404");
+          return;
         }
+
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
+        if (res.grantTypes === null || res.grantTypes === undefined || res.grantTypes.length === 0) {
+          res.grantTypes = ["authorization_code"];
+        }
+
+        if (res.tags === null || res.tags === undefined) {
+          res.tags = [];
+        }
+
         this.setState({
-          application: application,
+          application: res,
         });
+
+        this.getCerts(res.organization);
       });
   }
 
@@ -144,8 +160,8 @@ class ApplicationEditPage extends React.Component {
       });
   }
 
-  getCerts() {
-    CertBackend.getCerts("admin")
+  getCerts(owner) {
+    CertBackend.getCerts(owner)
       .then((res) => {
         this.setState({
           certs: (res.msg === undefined) ? res : [],
@@ -154,11 +170,16 @@ class ApplicationEditPage extends React.Component {
   }
 
   getProviders() {
-    ProviderBackend.getProviders(this.state.owner).then((res => {
-      this.setState({
-        providers: res,
+    ProviderBackend.getProviders(this.state.owner)
+      .then((res) => {
+        if (res.status === "ok") {
+          this.setState({
+            providers: res.data,
+          });
+        } else {
+          Setting.showMessage("error", res.msg);
+        }
       });
-    }));
   }
 
   getSamlMetadata() {
@@ -298,6 +319,18 @@ class ApplicationEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("organization:Tags"), i18next.t("application:Tags - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} mode="tags" style={{width: "100%"}} value={this.state.application.tags} onChange={(value => {this.updateApplicationField("tags", value);})}>
+              {
+                this.state.application.tags?.map((item, index) => <Option key={index} value={item}>{item}</Option>)
+              }
+            </Select>
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("provider:Client ID"), i18next.t("provider:Client ID - Tooltip"))} :
           </Col>
           <Col span={22} >
@@ -372,7 +405,7 @@ class ApplicationEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
-            {Setting.getLabel(i18next.t("application:Password ON"), i18next.t("application:Password ON - Tooltip"))} :
+            {Setting.getLabel(i18next.t("application:Enable password"), i18next.t("application:Enable password - Tooltip"))} :
           </Col>
           <Col span={1} >
             <Switch checked={this.state.application.enablePassword} onChange={checked => {
@@ -431,6 +464,36 @@ class ApplicationEditPage extends React.Component {
           </Col>
         </Row>
         <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
+            {Setting.getLabel(i18next.t("application:Enable Email linking"), i18next.t("application:Enable Email linking - Tooltip"))} :
+          </Col>
+          <Col span={1} >
+            <Switch checked={this.state.application.enableLinkWithEmail} onChange={checked => {
+              this.updateApplicationField("enableLinkWithEmail", checked);
+            }} />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("application:Org choice mode"), i18next.t("application:Org choice mode - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} style={{width: "100%"}}
+              options={[
+                {label: i18next.t("general:None"), value: "None"},
+                {label: i18next.t("application:Select"), value: "Select"},
+                {label: i18next.t("application:Input"), value: "Input"},
+              ].map((item) => {
+                return Setting.getOption(item.label, item.value);
+              })}
+              value={this.state.application.orgChoiceMode ?? []}
+              onChange={(value => {
+                this.updateApplicationField("orgChoiceMode", value);
+              })} >
+            </Select>
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Signup URL"), i18next.t("general:Signup URL - Tooltip"))} :
           </Col>
@@ -472,7 +535,7 @@ class ApplicationEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("provider:Terms of Use"), i18next.t("provider:Terms of Use - Tooltip"))} :
+            {Setting.getLabel(i18next.t("signup:Terms of Use"), i18next.t("signup:Terms of Use - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input value={this.state.application.termsOfUse} style={{marginBottom: "10px"}} onChange={e => {
@@ -533,7 +596,7 @@ class ApplicationEditPage extends React.Component {
             {Setting.getLabel(i18next.t("application:Grant types"), i18next.t("application:Grant types - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} mode="tags" style={{width: "100%"}}
+            <Select virtual={false} mode="multiple" style={{width: "100%"}}
               value={this.state.application.grantTypes}
               onChange={(value => {
                 this.updateApplicationField("grantTypes", value);
@@ -553,7 +616,7 @@ class ApplicationEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("application:SAML Reply URL"), i18next.t("application:Redirect URL (Assertion Consumer Service POST Binding URL) - Tooltip"))} :
+            {Setting.getLabel(i18next.t("application:SAML reply URL"), i18next.t("application:Redirect URL (Assertion Consumer Service POST Binding URL) - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input prefix={<LinkOutlined />} value={this.state.application.samlReplyUrl} onChange={e => {
@@ -563,7 +626,7 @@ class ApplicationEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
-            {Setting.getLabel(i18next.t("application:Enable SAML compress"), i18next.t("application:Enable SAML compress - Tooltip"))} :
+            {Setting.getLabel(i18next.t("application:Enable SAML compression"), i18next.t("application:Enable SAML compression - Tooltip"))} :
           </Col>
           <Col span={1} >
             <Switch checked={this.state.application.enableSamlCompress} onChange={checked => {
@@ -603,16 +666,6 @@ class ApplicationEditPage extends React.Component {
               application={this.state.application}
               onUpdateTable={(value) => {this.updateApplicationField("providers", value);}}
             />
-          </Col>
-        </Row>
-        <Row style={{marginTop: "20px"}} >
-          <Col span={(Setting.isMobile()) ? 19 : 6}>
-            {Setting.getLabel(i18next.t("application:Enable link accounts that with the same email"), i18next.t("application:Enable link accounts that with the same email - Tooltip"))} :
-          </Col>
-          <Col span={1} >
-            <Switch checked={this.state.application.enableLinkWithEmail} onChange={checked => {
-              this.updateApplicationField("enableLinkWithEmail", checked);
-            }} />
           </Col>
         </Row>
         <Row style={{marginTop: "20px"}} >
@@ -667,6 +720,27 @@ class ApplicationEditPage extends React.Component {
             } title={i18next.t("application:Form CSS - Edit")} trigger="click">
               <Input value={this.state.application.formCss} style={{marginBottom: "10px"}} onChange={e => {
                 this.updateApplicationField("formCss", e.target.value);
+              }} />
+            </Popover>
+          </Col>
+        </Row>
+        <Row>
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("application:Form CSS Mobile"), i18next.t("application:Form CSS Mobile - Tooltip"))} :
+          </Col>
+          <Col span={22}>
+            <Popover placement="right" content={
+              <div style={{width: "900px", height: "300px"}} >
+                <CodeMirror value={this.state.application.formCssMobile === "" ? template : this.state.application.formCssMobile}
+                  options={{mode: "css", theme: "material-darker"}}
+                  onBeforeChange={(editor, data, value) => {
+                    this.updateApplicationField("formCssMobile", value);
+                  }}
+                />
+              </div>
+            } title={i18next.t("application:Form CSS Mobile - Edit")} trigger="click">
+              <Input value={this.state.application.formCssMobile} style={{marginBottom: "10px"}} onChange={e => {
+                this.updateApplicationField("formCssMobile", e.target.value);
               }} />
             </Popover>
           </Col>
@@ -767,7 +841,15 @@ class ApplicationEditPage extends React.Component {
   renderSignupSigninPreview() {
     const themeData = this.state.application.themeData ?? Conf.ThemeDefault;
     let signUpUrl = `/signup/${this.state.application.name}`;
-    const signInUrl = `/login/oauth/authorize?client_id=${this.state.application.clientId}&response_type=code&redirect_uri=${this.state.application.redirectUris[0]}&scope=read&state=casdoor`;
+
+    let redirectUri;
+    if (this.state.application.redirectUris?.length > 0) {
+      redirectUri = this.state.application.redirectUris[0];
+    } else {
+      redirectUri = "\"ERROR: You must specify at least one Redirect URL in 'Redirect URLs'\"";
+    }
+
+    const signInUrl = `/login/oauth/authorize?client_id=${this.state.application.clientId}&response_type=code&redirect_uri=${redirectUri}&scope=read&state=casdoor`;
     const maskStyle = {position: "absolute", top: "0px", left: "0px", zIndex: 10, height: "97%", width: "100%", background: "rgba(0,0,0,0.4)"};
     if (!this.state.application.enablePassword) {
       signUpUrl = signInUrl.replace("/login/oauth/authorize", "/signup/oauth/authorize");
@@ -867,6 +949,8 @@ class ApplicationEditPage extends React.Component {
 
   submitApplicationEdit(willExist) {
     const application = Setting.deepCopy(this.state.application);
+    application.providers = application.providers?.filter(provider => this.state.providers.map(provider => provider.name).includes(provider.name));
+
     ApplicationBackend.updateApplication("admin", this.state.applicationName, application)
       .then((res) => {
         if (res.status === "ok") {

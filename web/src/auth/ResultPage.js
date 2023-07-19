@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import React from "react";
-import {Button, Result} from "antd";
+import {Button, Card, Result, Spin} from "antd";
 import i18next from "i18next";
 import {authConfig} from "./Auth";
 import * as ApplicationBackend from "../backend/ApplicationBackend";
@@ -43,38 +43,65 @@ class ResultPage extends React.Component {
     }
 
     ApplicationBackend.getApplication("admin", this.state.applicationName)
-      .then((application) => {
+      .then((res) => {
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+        this.onUpdateApplication(res);
         this.setState({
-          application: application,
+          application: res,
         });
       });
+  }
+
+  onUpdateApplication(application) {
+    this.props.onUpdateApplication(application);
   }
 
   render() {
     const application = this.state.application;
 
+    if (application === null) {
+      return (
+        <div style={{display: "flex", justifyContent: "center", alignItems: "center"}}>
+          <Spin size="large" tip={i18next.t("login:Loading")} style={{paddingTop: "10%"}} />
+        </div>
+      );
+    }
+
     return (
-      <div>
-        {
-          Setting.renderHelmet(application)
-        }
-        <Result
-          status="success"
-          title={i18next.t("signup:Your account has been created!")}
-          subTitle={i18next.t("signup:Please click the below button to sign in")}
-          extra={[
-            <Button type="primary" key="login" onClick={() => {
-              const linkInStorage = sessionStorage.getItem("signinUrl");
-              if (linkInStorage !== null && linkInStorage !== "") {
-                Setting.goToLink(linkInStorage);
-              } else {
-                Setting.redirectToLoginPage(application);
-              }
-            }}>
-              {i18next.t("login:Sign In")}
-            </Button>,
-          ]}
-        />
+      <div style={{display: "flex", flex: "1", justifyContent: "center"}}>
+        <Card>
+          <div style={{marginTop: "30px", marginBottom: "30px", textAlign: "center"}}>
+            {
+              Setting.renderHelmet(application)
+            }
+            {
+              Setting.renderLogo(application)
+            }
+            {
+              Setting.renderHelmet(application)
+            }
+            <Result
+              status="success"
+              title={i18next.t("signup:Your account has been created!")}
+              subTitle={i18next.t("signup:Please click the below button to sign in")}
+              extra={[
+                <Button type="primary" key="login" onClick={() => {
+                  const linkInStorage = sessionStorage.getItem("signinUrl");
+                  if (linkInStorage !== null && linkInStorage !== "") {
+                    Setting.goToLink(linkInStorage);
+                  } else {
+                    Setting.redirectToLoginPage(application, this.props.history);
+                  }
+                }}>
+                  {i18next.t("login:Sign In")}
+                </Button>,
+              ]}
+            />
+          </div>
+        </Card>
       </div>
     );
   }

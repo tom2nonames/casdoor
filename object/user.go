@@ -21,7 +21,7 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/util"
-	"github.com/duo-labs/webauthn/webauthn"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/xorm-io/core"
 )
 
@@ -33,22 +33,25 @@ const (
 type User struct {
 	Owner       string `xorm:"varchar(100) notnull pk" json:"owner"`
 	Name        string `xorm:"varchar(100) notnull pk" json:"name"`
-	CreatedTime string `xorm:"varchar(100)" json:"createdTime"`
+	CreatedTime string `xorm:"varchar(100) index" json:"createdTime"`
 	UpdatedTime string `xorm:"varchar(100)" json:"updatedTime"`
 
 	Id                string   `xorm:"varchar(100) index" json:"id"`
 	Type              string   `xorm:"varchar(100)" json:"type"`
 	Password          string   `xorm:"varchar(100)" json:"password"`
 	PasswordSalt      string   `xorm:"varchar(100)" json:"passwordSalt"`
+	PasswordType      string   `xorm:"varchar(100)" json:"passwordType"`
 	DisplayName       string   `xorm:"varchar(100)" json:"displayName"`
 	FirstName         string   `xorm:"varchar(100)" json:"firstName"`
 	LastName          string   `xorm:"varchar(100)" json:"lastName"`
 	Avatar            string   `xorm:"varchar(500)" json:"avatar"`
+	AvatarType        string   `xorm:"varchar(100)" json:"avatarType"`
 	PermanentAvatar   string   `xorm:"varchar(500)" json:"permanentAvatar"`
 	Email             string   `xorm:"varchar(100) index" json:"email"`
 	EmailVerified     bool     `json:"emailVerified"`
 	Phone             string   `xorm:"varchar(20) index" json:"phone"`
 	CountryCode       string   `xorm:"varchar(6)" json:"countryCode"`
+	Region            string   `xorm:"varchar(100)" json:"region"`
 	Location          string   `xorm:"varchar(100)" json:"location"`
 	Address           []string `json:"address"`
 	Affiliation       string   `xorm:"varchar(100)" json:"affiliation"`
@@ -58,7 +61,6 @@ type User struct {
 	Homepage          string   `xorm:"varchar(100)" json:"homepage"`
 	Bio               string   `xorm:"varchar(100)" json:"bio"`
 	Tag               string   `xorm:"varchar(100)" json:"tag"`
-	Region            string   `xorm:"varchar(100)" json:"region"`
 	Language          string   `xorm:"varchar(100)" json:"language"`
 	Gender            string   `xorm:"varchar(100)" json:"gender"`
 	Birthday          string   `xorm:"varchar(100)" json:"birthday"`
@@ -75,6 +77,8 @@ type User struct {
 	SignupApplication string   `xorm:"varchar(100)" json:"signupApplication"`
 	Hash              string   `xorm:"varchar(100)" json:"hash"`
 	PreHash           string   `xorm:"varchar(100)" json:"preHash"`
+	AccessKey         string   `xorm:"varchar(100)" json:"accessKey"`
+	AccessSecret      string   `xorm:"varchar(100)" json:"accessSecret"`
 
 	CreatedIp      string `xorm:"varchar(100)" json:"createdIp"`
 	LastSigninTime string `xorm:"varchar(100)" json:"lastSigninTime"`
@@ -156,12 +160,19 @@ type User struct {
 	Custom          string `xorm:"custom varchar(100)" json:"custom"`
 
 	WebauthnCredentials []webauthn.Credential `xorm:"webauthnCredentials blob" json:"webauthnCredentials"`
+	PreferredMfaType    string                `xorm:"varchar(100)" json:"preferredMfaType"`
+	RecoveryCodes       []string              `xorm:"varchar(1000)" json:"recoveryCodes"`
+	TotpSecret          string                `xorm:"varchar(100)" json:"totpSecret"`
+	MfaPhoneEnabled     bool                  `json:"mfaPhoneEnabled"`
+	MfaEmailEnabled     bool                  `json:"mfaEmailEnabled"`
+	MultiFactorAuths    []*MfaProps           `xorm:"-" json:"multiFactorAuths,omitempty"`
 
 	Ldap       string            `xorm:"ldap varchar(100)" json:"ldap"`
 	Properties map[string]string `json:"properties"`
 
 	Roles       []*Role       `json:"roles"`
 	Permissions []*Permission `json:"permissions"`
+	Groups      []string      `xorm:"groups varchar(1000)" json:"groups"`
 
 	LastSigninWrongTime string `xorm:"varchar(100)" json:"lastSigninWrongTime"`
 	SigninWrongTimes    int    `json:"signinWrongTimes"`
@@ -171,15 +182,16 @@ type User struct {
 }
 
 type Userinfo struct {
-	Sub         string `json:"sub"`
-	Iss         string `json:"iss"`
-	Aud         string `json:"aud"`
-	Name        string `json:"name,omitempty"`
-	DisplayName string `json:"preferred_username,omitempty"`
-	Email       string `json:"email,omitempty"`
-	Avatar      string `json:"picture,omitempty"`
-	Address     string `json:"address,omitempty"`
-	Phone       string `json:"phone,omitempty"`
+	Sub         string   `json:"sub"`
+	Iss         string   `json:"iss"`
+	Aud         string   `json:"aud"`
+	Name        string   `json:"preferred_username,omitempty"`
+	DisplayName string   `json:"name,omitempty"`
+	Email       string   `json:"email,omitempty"`
+	Avatar      string   `json:"picture,omitempty"`
+	Address     string   `json:"address,omitempty"`
+	Phone       string   `json:"phone,omitempty"`
+	Groups      []string `json:"groups,omitempty"`
 }
 
 type ManagedAccount struct {
@@ -189,347 +201,452 @@ type ManagedAccount struct {
 	SigninUrl   string `xorm:"varchar(200)" json:"signinUrl"`
 }
 
-func GetGlobalUserCount(field, value string) int {
+func GetGlobalUserCount(field, value string) (int64, error) {
 	session := GetSession("", -1, -1, field, value, "", "")
-	count, err := session.Count(&User{})
-	if err != nil {
-		panic(err)
-	}
-
-	return int(count)
+	return session.Count(&User{})
 }
 
-func GetGlobalUsers() []*User {
+func GetGlobalUsers() ([]*User, error) {
 	users := []*User{}
 	err := adapter.Engine.Desc("created_time").Find(&users)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return users
+	return users, nil
 }
 
-func GetPaginationGlobalUsers(offset, limit int, field, value, sortField, sortOrder string) []*User {
+func GetPaginationGlobalUsers(offset, limit int, field, value, sortField, sortOrder string) ([]*User, error) {
 	users := []*User{}
-	session := GetSession("", offset, limit, field, value, sortField, sortOrder)
+	session := GetSessionForUser("", offset, limit, field, value, sortField, sortOrder)
 	err := session.Find(&users)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return users
+	return users, nil
 }
 
-func GetUserCount(owner, field, value string) int {
+func GetUserCount(owner, field, value string, groupName string) (int64, error) {
 	session := GetSession(owner, -1, -1, field, value, "", "")
-	count, err := session.Count(&User{})
-	if err != nil {
-		panic(err)
+
+	if groupName != "" {
+		return GetGroupUserCount(groupName, field, value)
 	}
 
-	return int(count)
+	return session.Count(&User{})
 }
 
-func GetOnlineUserCount(owner string, isOnline int) int {
-	count, err := adapter.Engine.Where("is_online = ?", isOnline).Count(&User{Owner: owner})
-	if err != nil {
-		panic(err)
-	}
-
-	return int(count)
+func GetOnlineUserCount(owner string, isOnline int) (int64, error) {
+	return adapter.Engine.Where("is_online = ?", isOnline).Count(&User{Owner: owner})
 }
 
-func GetUsers(owner string) []*User {
+func GetUsers(owner string) ([]*User, error) {
 	users := []*User{}
 	err := adapter.Engine.Desc("created_time").Find(&users, &User{Owner: owner})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return users
+	return users, nil
 }
 
-func GetSortedUsers(owner string, sorter string, limit int) []*User {
+func GetUsersByTag(owner string, tag string) ([]*User, error) {
+	users := []*User{}
+	err := adapter.Engine.Desc("created_time").Find(&users, &User{Owner: owner, Tag: tag})
+	if err != nil {
+		return nil, err
+	}
+
+	return users, nil
+}
+
+func GetSortedUsers(owner string, sorter string, limit int) ([]*User, error) {
 	users := []*User{}
 	err := adapter.Engine.Desc(sorter).Limit(limit, 0).Find(&users, &User{Owner: owner})
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return users
+	return users, nil
 }
 
-func GetPaginationUsers(owner string, offset, limit int, field, value, sortField, sortOrder string) []*User {
+func GetPaginationUsers(owner string, offset, limit int, field, value, sortField, sortOrder string, groupName string) ([]*User, error) {
 	users := []*User{}
-	session := GetSession(owner, offset, limit, field, value, sortField, sortOrder)
+
+	if groupName != "" {
+		return GetPaginationGroupUsers(groupName, offset, limit, field, value, sortField, sortOrder)
+	}
+
+	session := GetSessionForUser(owner, offset, limit, field, value, sortField, sortOrder)
 	err := session.Find(&users)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-
-	return users
+	return users, nil
 }
 
-func getUser(owner string, name string) *User {
+func getUser(owner string, name string) (*User, error) {
 	if owner == "" || name == "" {
-		return nil
+		return nil, nil
 	}
 
 	user := User{Owner: owner, Name: name}
 	existed, err := adapter.Engine.Get(&user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return &user
+		return &user, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func getUserById(owner string, id string) *User {
+func getUserById(owner string, id string) (*User, error) {
 	if owner == "" || id == "" {
-		return nil
+		return nil, nil
 	}
 
 	user := User{Owner: owner, Id: id}
 	existed, err := adapter.Engine.Get(&user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return &user
+		return &user, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func getUserByWechatId(wechatOpenId string, wechatUnionId string) *User {
+func getUserByWechatId(owner string, wechatOpenId string, wechatUnionId string) (*User, error) {
 	if wechatUnionId == "" {
 		wechatUnionId = wechatOpenId
 	}
 	user := &User{}
-	existed, err := adapter.Engine.Where("wechat = ? OR wechat = ?", wechatOpenId, wechatUnionId).Get(user)
+	existed, err := adapter.Engine.Where("owner = ?", owner).Where("wechat = ? OR wechat = ?", wechatOpenId, wechatUnionId).Get(user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return user
+		return user, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func GetUserByEmail(owner string, email string) *User {
+func GetUserByEmail(owner string, email string) (*User, error) {
 	if owner == "" || email == "" {
-		return nil
+		return nil, nil
 	}
 
 	user := User{Owner: owner, Email: email}
 	existed, err := adapter.Engine.Get(&user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return &user
+		return &user, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func GetUserByPhone(owner string, phone string) *User {
+func GetUserByPhone(owner string, phone string) (*User, error) {
 	if owner == "" || phone == "" {
-		return nil
+		return nil, nil
 	}
 
 	user := User{Owner: owner, Phone: phone}
 	existed, err := adapter.Engine.Get(&user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return &user
+		return &user, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func GetUserByUserId(owner string, userId string) *User {
+func GetUserByUserId(owner string, userId string) (*User, error) {
 	if owner == "" || userId == "" {
-		return nil
+		return nil, nil
 	}
 
 	user := User{Owner: owner, Id: userId}
 	existed, err := adapter.Engine.Get(&user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return &user
+		return &user, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func GetUser(id string) *User {
+func GetUserByAccessKey(accessKey string) (*User, error) {
+	if accessKey == "" {
+		return nil, nil
+	}
+	user := User{AccessKey: accessKey}
+	existed, err := adapter.Engine.Get(&user)
+	if err != nil {
+		return nil, err
+	}
+
+	if existed {
+		return &user, nil
+	} else {
+		return nil, nil
+	}
+}
+
+func GetUser(id string) (*User, error) {
 	owner, name := util.GetOwnerAndNameFromId(id)
 	return getUser(owner, name)
 }
 
-func GetUserNoCheck(id string) *User {
+func GetUserNoCheck(id string) (*User, error) {
 	owner, name := util.GetOwnerAndNameFromIdNoCheck(id)
 	return getUser(owner, name)
 }
 
-func GetMaskedUser(user *User) *User {
+func GetMaskedUser(user *User, errs ...error) (*User, error) {
+	if len(errs) > 0 && errs[0] != nil {
+		return nil, errs[0]
+	}
+
 	if user == nil {
-		return nil
+		return nil, nil
 	}
 
 	if user.Password != "" {
 		user.Password = "***"
 	}
-
+	if user.AccessSecret != "" {
+		user.AccessSecret = "***"
+	}
 	if user.ManagedAccounts != nil {
 		for _, manageAccount := range user.ManagedAccounts {
 			manageAccount.Password = "***"
 		}
 	}
-	return user
-}
 
-func GetMaskedUsers(users []*User) []*User {
-	for _, user := range users {
-		user = GetMaskedUser(user)
+	if user.TotpSecret != "" {
+		user.TotpSecret = ""
 	}
-	return users
+	if user.RecoveryCodes != nil {
+		user.RecoveryCodes = nil
+	}
+
+	return user, nil
 }
 
-func GetLastUser(owner string) *User {
+func GetMaskedUsers(users []*User, errs ...error) ([]*User, error) {
+	if len(errs) > 0 && errs[0] != nil {
+		return nil, errs[0]
+	}
+
+	var err error
+	for _, user := range users {
+		user, err = GetMaskedUser(user)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return users, nil
+}
+
+func GetLastUser(owner string) (*User, error) {
 	user := User{Owner: owner}
 	existed, err := adapter.Engine.Desc("created_time", "id").Get(&user)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if existed {
-		return &user
+		return &user, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
-func UpdateUser(id string, user *User, columns []string, isGlobalAdmin bool) bool {
+func UpdateUser(id string, user *User, columns []string, isAdmin bool) (bool, error) {
+	var err error
 	owner, name := util.GetOwnerAndNameFromIdNoCheck(id)
-	oldUser := getUser(owner, name)
+	oldUser, err := getUser(owner, name)
+	if err != nil {
+		return false, err
+	}
 	if oldUser == nil {
-		return false
+		return false, nil
 	}
 
 	if name != user.Name {
 		err := userChangeTrigger(id, user.Owner+"/"+user.Name)
 		if err != nil {
-			return false
+			return false, err
 		}
 	}
 
 	if user.Password == "***" {
 		user.Password = oldUser.Password
 	}
-	user.UpdateUserHash()
 
 	if user.Avatar != oldUser.Avatar && user.Avatar != "" && user.PermanentAvatar != "*" {
-		user.PermanentAvatar = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, false)
+		user.PermanentAvatar, err = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, false)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	if len(columns) == 0 {
 		columns = []string{
 			"owner", "display_name", "avatar",
-			"location", "address", "region", "language", "affiliation", "title", "homepage", "bio", "score", "tag", "signup_application",
+			"location", "address", "country_code", "region", "language", "affiliation", "title", "homepage", "bio", "tag", "language", "gender", "birthday", "education", "score", "karma", "ranking", "signup_application",
 			"is_admin", "is_global_admin", "is_forbidden", "is_deleted", "hash", "is_default_avatar", "properties", "webauthnCredentials", "managedAccounts",
-			"signin_wrong_times", "last_signin_wrong_time",
+			"signin_wrong_times", "last_signin_wrong_time", "groups", "access_key", "access_secret",
+			"github", "google", "qq", "wechat", "facebook", "dingtalk", "weibo", "gitee", "linkedin", "wecom", "lark", "gitlab", "adfs",
+			"baidu", "alipay", "casdoor", "infoflow", "apple", "azuread", "slack", "steam", "bilibili", "okta", "douyin", "line", "amazon",
+			"auth0", "battlenet", "bitbucket", "box", "cloudfoundry", "dailymotion", "deezer", "digitalocean", "discord", "dropbox",
+			"eveonline", "fitbit", "gitea", "heroku", "influxcloud", "instagram", "intercom", "kakao", "lastfm", "mailru", "meetup",
+			"microsoftonline", "naver", "nextcloud", "onedrive", "oura", "patreon", "paypal", "salesforce", "shopify", "soundcloud",
+			"spotify", "strava", "stripe", "tiktok", "tumblr", "twitch", "twitter", "typetalk", "uber", "vk", "wepay", "xero", "yahoo",
+			"yammer", "yandex", "zoom", "custom",
 		}
 	}
-	if isGlobalAdmin {
+	if isAdmin {
 		columns = append(columns, "name", "email", "phone", "country_code")
+	}
+
+	affected, err := updateUser(id, user, columns)
+	if err != nil {
+		return false, err
+	}
+
+	return affected != 0, nil
+}
+
+func updateUser(id string, user *User, columns []string) (int64, error) {
+	owner, name := util.GetOwnerAndNameFromIdNoCheck(id)
+	err := user.UpdateUserHash()
+	if err != nil {
+		return 0, err
 	}
 
 	affected, err := adapter.Engine.ID(core.PK{owner, name}).Cols(columns...).Update(user)
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
-
-	return affected != 0
+	return affected, nil
 }
 
-func UpdateUserForAllFields(id string, user *User) bool {
+func UpdateUserForAllFields(id string, user *User) (bool, error) {
+	var err error
 	owner, name := util.GetOwnerAndNameFromId(id)
-	oldUser := getUser(owner, name)
+	oldUser, err := getUser(owner, name)
+	if err != nil {
+		return false, err
+	}
+
 	if oldUser == nil {
-		return false
+		return false, nil
 	}
 
 	if name != user.Name {
 		err := userChangeTrigger(name, user.Name)
 		if err != nil {
-			return false
+			return false, nil
 		}
 	}
 
-	user.UpdateUserHash()
+	err = user.UpdateUserHash()
+	if err != nil {
+		return false, err
+	}
 
 	if user.Avatar != oldUser.Avatar && user.Avatar != "" {
-		user.PermanentAvatar = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, false)
+		user.PermanentAvatar, err = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, false)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	affected, err := adapter.Engine.ID(core.PK{owner, name}).AllCols().Update(user)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
-func AddUser(user *User) bool {
+func AddUser(user *User) (bool, error) {
+	var err error
 	if user.Id == "" {
 		user.Id = util.GenerateId()
 	}
 
 	if user.Owner == "" || user.Name == "" {
-		return false
+		return false, nil
 	}
 
-	organization := GetOrganizationByUser(user)
+	organization, _ := GetOrganizationByUser(user)
 	if organization == nil {
-		return false
+		return false, nil
+	}
+
+	if user.PasswordType == "" && organization.PasswordType != "" {
+		user.PasswordType = organization.PasswordType
 	}
 
 	user.UpdateUserPassword(organization)
 
-	user.UpdateUserHash()
+	err = user.UpdateUserHash()
+	if err != nil {
+		return false, err
+	}
+
 	user.PreHash = user.Hash
 
-	user.PermanentAvatar = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, false)
+	updated, err := user.refreshAvatar()
+	if err != nil {
+		return false, err
+	}
 
-	user.Ranking = GetUserCount(user.Owner, "", "") + 1
+	if updated && user.PermanentAvatar != "*" {
+		user.PermanentAvatar, err = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, false)
+		if err != nil {
+			return false, err
+		}
+	}
+
+	count, err := GetUserCount(user.Owner, "", "", "")
+	if err != nil {
+		return false, err
+	}
+	user.Ranking = int(count + 1)
 
 	affected, err := adapter.Engine.Insert(user)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
-func AddUsers(users []*User) bool {
+func AddUsers(users []*User) (bool, error) {
+	var err error
 	if len(users) == 0 {
-		return false
+		return false, nil
 	}
 
 	// organization := GetOrganizationByUser(users[0])
@@ -537,27 +654,34 @@ func AddUsers(users []*User) bool {
 		// this function is only used for syncer or batch upload, so no need to encrypt the password
 		// user.UpdateUserPassword(organization)
 
-		user.UpdateUserHash()
+		err = user.UpdateUserHash()
+		if err != nil {
+			return false, err
+		}
+
 		user.PreHash = user.Hash
 
-		user.PermanentAvatar = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, true)
+		user.PermanentAvatar, err = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, true)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	affected, err := adapter.Engine.Insert(users)
 	if err != nil {
 		if !strings.Contains(err.Error(), "Duplicate entry") {
-			panic(err)
+			return false, err
 		}
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
-func AddUsersInBatch(users []*User) bool {
+func AddUsersInBatch(users []*User) (bool, error) {
 	batchSize := conf.GetConfigBatchSize()
 
 	if len(users) == 0 {
-		return false
+		return false, nil
 	}
 
 	affected := false
@@ -571,20 +695,25 @@ func AddUsersInBatch(users []*User) bool {
 		tmp := users[start:end]
 		// TODO: save to log instead of standard output
 		// fmt.Printf("Add users: [%d - %d].\n", start, end)
-		if AddUsers(tmp) {
+		if ok, err := AddUsers(tmp); err != nil {
+			return false, err
+		} else if ok {
 			affected = true
 		}
 	}
 
-	return affected
+	return affected, nil
 }
 
-func DeleteUser(user *User) bool {
+func DeleteUser(user *User) (bool, error) {
 	// Forced offline the user first
-	DeleteSession(util.GetSessionId(user.Owner, user.Name, CasdoorApplication))
+	_, err := DeleteSession(util.GetSessionId(user.Owner, user.Name, CasdoorApplication))
+	if err != nil {
+		return false, err
+	}
 
 	id := user.Owner + "/" + user.Name
-	roles := GetRolesByUser(id)
+	roles, _ := GetRolesByUser(id)
 	permissionsByUser := GetPermissionsByUser(id)
 	var permissionsByRole []*Permission
 
@@ -598,10 +727,10 @@ func DeleteUser(user *User) bool {
 		}
 		_, err := adapter.Engine.ID(core.PK{role.Owner, role.Name}).AllCols().Update(role)
 		if err != nil {
-			return false
+			return false, err
 		}
-
-		permissionsByRole = append(permissionsByRole, GetPermissionsByRole(role.Owner+"/"+role.Name)...)
+		permissions, _ := GetPermissionsByRole(role.Owner + "/" + role.Name)
+		permissionsByRole = append(permissionsByRole, permissions...)
 	}
 
 	for _, p := range permissionsByUser {
@@ -613,7 +742,7 @@ func DeleteUser(user *User) bool {
 		}
 		_, err := adapter.Engine.ID(core.PK{p.Owner, p.Name}).AllCols().Update(p)
 		if err != nil {
-			return false
+			return false, err
 		}
 	}
 
@@ -633,10 +762,10 @@ func DeleteUser(user *User) bool {
 
 	affected, err := adapter.Engine.ID(core.PK{user.Owner, user.Name}).Delete(&User{})
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
 func GetUserInfo(user *User, scope string, aud string, host string) *Userinfo {
@@ -651,6 +780,7 @@ func GetUserInfo(user *User, scope string, aud string, host string) *Userinfo {
 		resp.Name = user.Name
 		resp.DisplayName = user.DisplayName
 		resp.Avatar = user.Avatar
+		resp.Groups = user.Groups
 	}
 	if strings.Contains(scope, "email") {
 		resp.Email = user.Email
@@ -664,7 +794,7 @@ func GetUserInfo(user *User, scope string, aud string, host string) *Userinfo {
 	return &resp
 }
 
-func LinkUserAccount(user *User, field string, value string) bool {
+func LinkUserAccount(user *User, field string, value string) (bool, error) {
 	return SetUserField(user, field, value)
 }
 
@@ -676,13 +806,21 @@ func isUserIdGlobalAdmin(userId string) bool {
 	return strings.HasPrefix(userId, "built-in/")
 }
 
-func ExtendUserWithRolesAndPermissions(user *User) {
+func ExtendUserWithRolesAndPermissions(user *User) (err error) {
 	if user == nil {
 		return
 	}
 
-	user.Roles = GetRolesByUser(user.GetId())
-	user.Permissions = GetPermissionsByUser(user.GetId())
+	user.Permissions, user.Roles, err = GetPermissionsAndRolesByUser(user.GetId())
+	if err != nil {
+		return err
+	}
+
+	if user.Groups == nil {
+		user.Groups = []string{}
+	}
+
+	return
 }
 
 //func userChangeTrigger(oldName string, newName string) error {
@@ -753,7 +891,7 @@ func userChangeTrigger(oldName string, newName string) error {
 		return err
 	}
 
-	roles := GetRolesByUser(oldName)
+	roles, _ := GetRolesByUser(oldName)
 	permissionsByUser := GetPermissionsByUser(oldName)
 	var permissionsByRole []*Permission
 
@@ -764,12 +902,13 @@ func userChangeTrigger(oldName string, newName string) error {
 				role.Users[j] = newName
 			}
 		}
-		_, err = session.Where("name=?", role.Name).Update(role)
+		_, err = session.Where("name=?", role.Name).And("owner=?", role.Owner).Update(role)
 		if err != nil {
 			return err
 		}
 
-		permissionsByRole = append(permissionsByRole, GetPermissionsByRole(role.Owner+"/"+role.Name)...)
+		permissions, _ := GetPermissionsByRole(role.Owner + "/" + role.Name)
+		permissionsByRole = append(permissionsByRole, permissions...)
 	}
 
 	for _, p := range permissionsByUser {
@@ -800,4 +939,29 @@ func userChangeTrigger(oldName string, newName string) error {
 
 	return session.Commit()
 
+}
+
+func (user *User) IsMfaEnabled() bool {
+	if user == nil {
+		return false
+	}
+	return user.PreferredMfaType != ""
+}
+
+func (user *User) GetPreferredMfaProps(masked bool) *MfaProps {
+	if user == nil || user.PreferredMfaType == "" {
+		return nil
+	}
+	return user.GetMfaProps(user.PreferredMfaType, masked)
+}
+
+func AddUserkeys(user *User, isAdmin bool) (bool, error) {
+	if user == nil {
+		return false, nil
+	}
+
+	user.AccessKey = util.GenerateId()
+	user.AccessSecret = util.GenerateId()
+
+	return UpdateUser(user.GetId(), user, []string{}, isAdmin)
 }

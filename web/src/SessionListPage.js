@@ -16,12 +16,12 @@ import BaseListPage from "./BaseListPage";
 import * as Setting from "./Setting";
 import i18next from "i18next";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Table, Tag} from "antd";
+import {Table, Tag} from "antd";
 import React from "react";
 import * as SessionBackend from "./backend/SessionBackend";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
 
 class SessionListPage extends BaseListPage {
-
   deleteSession(i) {
     SessionBackend.deleteSession(this.state.data[i])
       .then((res) => {
@@ -54,10 +54,10 @@ class SessionListPage extends BaseListPage {
       {
         title: i18next.t("general:Organization"),
         dataIndex: "owner",
-        key: "organization",
+        key: "owner",
         width: "110px",
         sorter: true,
-        ...this.getColumnSearchProps("organization"),
+        ...this.getColumnSearchProps("owner"),
         render: (text, record, index) => {
           return (
             <Link to={`/organizations/${text}`}>
@@ -97,12 +97,11 @@ class SessionListPage extends BaseListPage {
         render: (text, record, index) => {
           return (
             <div>
-              <Popconfirm
-                title={`Sure to delete session: ${record.name} ?`}
+              <PopconfirmModal
+                title={i18next.t("general:Sure to delete") + `: ${record.name} ?`}
                 onConfirm={() => this.deleteSession(index)}
               >
-                <Button style={{marginBottom: "10px"}} type="primary" danger>{i18next.t("general:Delete")}</Button>
-              </Popconfirm>
+              </PopconfirmModal>
             </div>
           );
         },
@@ -118,7 +117,7 @@ class SessionListPage extends BaseListPage {
 
     return (
       <div>
-        <Table scroll={{x: "max-content"}} columns={columns} dataSource={sessions} rowKey="name" size="middle" bordered pagination={paginationProps}
+        <Table scroll={{x: "max-content"}} columns={columns} dataSource={sessions} rowKey={(record) => `${record.owner}/${record.name}`} size="middle" bordered pagination={paginationProps}
           loading={this.state.loading}
           onChange={this.handleTableChange}
         />
@@ -134,11 +133,13 @@ class SessionListPage extends BaseListPage {
       value = params.contentType;
     }
     this.setState({loading: true});
-    SessionBackend.getSessions("", params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+    SessionBackend.getSessions(Setting.isDefaultOrganizationSelected(this.props.account) ? "" : Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
       .then((res) => {
+        this.setState({
+          loading: false,
+        });
         if (res.status === "ok") {
           this.setState({
-            loading: false,
             data: res.data,
             pagination: {
               ...params.pagination,
@@ -150,9 +151,10 @@ class SessionListPage extends BaseListPage {
         } else {
           if (Setting.isResponseDenied(res)) {
             this.setState({
-              loading: false,
               isAuthorized: false,
             });
+          } else {
+            Setting.showMessage("error", res.msg);
           }
         }
       });

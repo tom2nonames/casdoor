@@ -16,7 +16,6 @@ package conf
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"runtime"
 	"strconv"
@@ -67,20 +66,21 @@ func GetConfigString(key string) string {
 	if res == "" {
 		if key == "staticBaseUrl" {
 			res = "https://cdn.casbin.org"
+		} else if key == "logConfig" {
+			res = "{\"filename\": \"logs/casdoor.log\", \"maxdays\":99999, \"perm\":\"0770\"}"
 		}
 	}
 
 	return res
 }
 
-func GetConfigBool(key string) (bool, error) {
+func GetConfigBool(key string) bool {
 	value := GetConfigString(key)
 	if value == "true" {
-		return true, nil
-	} else if value == "false" {
-		return false, nil
+		return true
+	} else {
+		return false
 	}
-	return false, fmt.Errorf("value %s cannot be converted into bool", value)
 }
 
 func GetConfigInt64(key string) (int64, error) {
@@ -106,16 +106,14 @@ func GetConfigDataSourceName() string {
 }
 
 func GetLanguage(language string) string {
-	if language == "" {
+	if language == "" || language == "*" {
 		return "en"
 	}
 
-	language = language[0:2]
-
-	if strings.Contains(GetConfigString("languages"), language) {
-		return language
-	} else {
+	if len(language) != 2 || language == "nu" {
 		return "en"
+	} else {
+		return language
 	}
 }
 

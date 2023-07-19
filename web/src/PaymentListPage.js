@@ -14,17 +14,19 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Table} from "antd";
+import {Button, Table} from "antd";
 import moment from "moment";
 import * as Setting from "./Setting";
 import * as PaymentBackend from "./backend/PaymentBackend";
 import i18next from "i18next";
 import BaseListPage from "./BaseListPage";
 import * as Provider from "./auth/Provider";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
 
 class PaymentListPage extends BaseListPage {
   newPayment() {
     const randomName = Setting.getRandomName();
+    const organizationName = Setting.getRequestOrganization(this.props.account);
     return {
       owner: "admin",
       name: `payment_${randomName}`,
@@ -32,7 +34,7 @@ class PaymentListPage extends BaseListPage {
       displayName: `New Payment - ${randomName}`,
       provider: "provider_pay_paypal",
       type: "PayPal",
-      organization: "built-in",
+      organization: organizationName,
       user: "admin",
       productName: "computer-1",
       productDisplayName: "A notebook computer",
@@ -166,7 +168,7 @@ class PaymentListPage extends BaseListPage {
       //   ...this.getColumnSearchProps('displayName'),
       // },
       {
-        title: i18next.t("payment:Type"),
+        title: i18next.t("provider:Type"),
         dataIndex: "type",
         key: "type",
         width: "140px",
@@ -188,7 +190,7 @@ class PaymentListPage extends BaseListPage {
         ...this.getColumnSearchProps("productDisplayName"),
       },
       {
-        title: i18next.t("payment:Price"),
+        title: i18next.t("product:Price"),
         dataIndex: "price",
         key: "price",
         width: "120px",
@@ -204,7 +206,7 @@ class PaymentListPage extends BaseListPage {
         ...this.getColumnSearchProps("currency"),
       },
       {
-        title: i18next.t("payment:State"),
+        title: i18next.t("general:State"),
         dataIndex: "state",
         key: "state",
         width: "120px",
@@ -222,12 +224,11 @@ class PaymentListPage extends BaseListPage {
             <div>
               <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} onClick={() => this.props.history.push(`/payments/${record.name}/result`)}>{i18next.t("payment:Result")}</Button>
               <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary" onClick={() => this.props.history.push(`/payments/${record.name}`)}>{i18next.t("general:Edit")}</Button>
-              <Popconfirm
-                title={`Sure to delete payment: ${record.name} ?`}
+              <PopconfirmModal
+                title={i18next.t("general:Sure to delete") + `: ${record.name} ?`}
                 onConfirm={() => this.deletePayment(index)}
               >
-                <Button style={{marginBottom: "10px"}} type="primary" danger>{i18next.t("general:Delete")}</Button>
-              </Popconfirm>
+              </PopconfirmModal>
             </div>
           );
         },
@@ -243,7 +244,7 @@ class PaymentListPage extends BaseListPage {
 
     return (
       <div>
-        <Table scroll={{x: "max-content"}} columns={columns} dataSource={payments} rowKey="name" size="middle" bordered pagination={paginationProps}
+        <Table scroll={{x: "max-content"}} columns={columns} dataSource={payments} rowKey={(record) => `${record.owner}/${record.name}`} size="middle" bordered pagination={paginationProps}
           title={() => (
             <div>
               {i18next.t("general:Payments")}&nbsp;&nbsp;&nbsp;&nbsp;
@@ -265,11 +266,13 @@ class PaymentListPage extends BaseListPage {
       value = params.type;
     }
     this.setState({loading: true});
-    PaymentBackend.getPayments("", params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+    PaymentBackend.getPayments("admin", Setting.isDefaultOrganizationSelected(this.props.account) ? "" : Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
       .then((res) => {
+        this.setState({
+          loading: false,
+        });
         if (res.status === "ok") {
           this.setState({
-            loading: false,
             data: res.data,
             pagination: {
               ...params.pagination,
@@ -281,9 +284,10 @@ class PaymentListPage extends BaseListPage {
         } else {
           if (Setting.isResponseDenied(res)) {
             this.setState({
-              loading: false,
               isAuthorized: false,
             });
+          } else {
+            Setting.showMessage("error", res.msg);
           }
         }
       });

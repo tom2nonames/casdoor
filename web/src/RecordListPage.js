@@ -156,7 +156,7 @@ class RecordListPage extends BaseListPage {
         },
       },
       {
-        title: i18next.t("record:Is Triggered"),
+        title: i18next.t("record:Is triggered"),
         dataIndex: "isTriggered",
         key: "isTriggered",
         width: "140px",
@@ -175,7 +175,7 @@ class RecordListPage extends BaseListPage {
     ];
 
     if (Setting.isLocalAdminUser(this.props.account)) {
-      columns = columns.filter(column => column.key !== "name" && column.key !== "organization");
+      columns = columns.filter(column => column.key !== "name");
     }
 
     const paginationProps = {
@@ -209,11 +209,13 @@ class RecordListPage extends BaseListPage {
       value = params.method;
     }
     this.setState({loading: true});
-    RecordBackend.getRecords(params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+    RecordBackend.getRecords(Setting.isDefaultOrganizationSelected(this.props.account) ? "" : Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
       .then((res) => {
+        this.setState({
+          loading: false,
+        });
         if (res.status === "ok") {
           this.setState({
-            loading: false,
             data: res.data,
             pagination: {
               ...params.pagination,

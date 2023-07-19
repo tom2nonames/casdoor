@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/casdoor/casdoor/conf"
@@ -26,8 +27,21 @@ import (
 	"github.com/xorm-io/core"
 )
 
+type VerifyResult struct {
+	Code int
+	Msg  string
+}
+
 const (
-	wrongCode = "wrongCode"
+	VerificationSuccess = iota
+	wrongCodeError
+	noRecordError
+	timeoutError
+)
+
+const (
+	VerifyTypePhone = "phone"
+	VerifyTypeEmail = "email"
 )
 
 type VerificationRecord struct {
@@ -137,24 +151,27 @@ func AddToVerificationRecord(user *User, provider *Provider, remoteAddr, recordT
 	return nil
 }
 
-func getVerificationRecord(dest string) *VerificationRecord {
+func getVerificationRecord(dest string) (*VerificationRecord, error) {
 	var record VerificationRecord
 	record.Receiver = dest
 	has, err := adapter.Engine.Desc("time").Where("is_used = false").Get(&record)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	if !has {
-		return nil
+		return nil, nil
 	}
-	return &record
+	return &record, nil
 }
 
-func CheckVerificationCode(dest, code, lang string) string {
-	record := getVerificationRecord(dest)
+func CheckVerificationCode(dest, code, lang string) *VerifyResult {
+	record, err := getVerificationRecord(dest)
+	if err != nil {
+		panic(err)
+	}
 
 	if record == nil {
-		return i18n.Translate(lang, "verification:Code has not been sent yet!")
+		return &VerifyResult{noRecordError, i18n.Translate(lang, "verification:Code has not been sent yet!")}
 	}
 
 	timeout, err := conf.GetConfigInt64("verificationCodeTimeout")
@@ -164,27 +181,25 @@ func CheckVerificationCode(dest, code, lang string) string {
 
 	now := time.Now().Unix()
 	if now-record.Time > timeout*60 {
-		return fmt.Sprintf(i18n.Translate(lang, "verification:You should verify your code in %d min!"), timeout)
+		return &VerifyResult{timeoutError, fmt.Sprintf(i18n.Translate(lang, "verification:You should verify your code in %d min!"), timeout)}
 	}
 
 	if record.Code != code {
-		return wrongCode
+		return &VerifyResult{wrongCodeError, i18n.Translate(lang, "verification:Wrong verification code!")}
 	}
 
-	return ""
+	return &VerifyResult{VerificationSuccess, ""}
 }
 
-func DisableVerificationCode(dest string) {
-	record := getVerificationRecord(dest)
-	if record == nil {
+func DisableVerificationCode(dest string) (err error) {
+	record, err := getVerificationRecord(dest)
+	if record == nil || err != nil {
 		return
 	}
 
 	record.IsUsed = true
-	_, err := adapter.Engine.ID(core.PK{record.Owner, record.Name}).AllCols().Update(record)
-	if err != nil {
-		panic(err)
-	}
+	_, err = adapter.Engine.ID(core.PK{record.Owner, record.Name}).AllCols().Update(record)
+	return
 }
 
 func CheckSigninCode(user *User, dest, code, lang string) string {
@@ -194,14 +209,22 @@ func CheckSigninCode(user *User, dest, code, lang string) string {
 	}
 
 	result := CheckVerificationCode(dest, code, lang)
-	switch result {
-	case "":
+	switch result.Code {
+	case VerificationSuccess:
 		resetUserSigninErrorTimes(user)
 		return ""
-	case wrongCode:
+	case wrongCodeError:
 		return recordSigninErrorInfo(user, lang)
 	default:
-		return result
+		return result.Msg
+	}
+}
+
+func GetVerifyType(username string) (verificationCodeType string) {
+	if strings.Contains(username, "@") {
+		return VerifyTypeEmail
+	} else {
+		return VerifyTypePhone
 	}
 }
 

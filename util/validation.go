@@ -15,16 +15,25 @@
 package util
 
 import (
+	"fmt"
 	"net/mail"
 	"regexp"
 
 	"github.com/nyaruka/phonenumbers"
 )
 
-var rePhone *regexp.Regexp
+var (
+	rePhone          *regexp.Regexp
+	ReWhiteSpace     *regexp.Regexp
+	ReFieldWhiteList *regexp.Regexp
+	ReUserName       *regexp.Regexp
+)
 
 func init() {
-	rePhone, _ = regexp.Compile("(\\d{3})\\d*(\\d{4})")
+	rePhone, _ = regexp.Compile(`(\d{3})\d*(\d{4})`)
+	ReWhiteSpace, _ = regexp.Compile(`\s`)
+	ReFieldWhiteList, _ = regexp.Compile(`^[A-Za-z0-9]+$`)
+	ReUserName, _ = regexp.Compile("^[a-zA-Z0-9]+((?:-[a-zA-Z0-9]+)|(?:_[a-zA-Z0-9]+))*$")
 }
 
 func IsEmailValid(email string) bool {
@@ -41,10 +50,35 @@ func IsPhoneValid(phone string, countryCode string) bool {
 }
 
 func IsPhoneAllowInRegin(countryCode string, allowRegions []string) bool {
-	return !ContainsString(allowRegions, countryCode)
+	return ContainsString(allowRegions, countryCode)
 }
 
 func GetE164Number(phone string, countryCode string) (string, bool) {
 	phoneNumber, _ := phonenumbers.Parse(phone, countryCode)
 	return phonenumbers.Format(phoneNumber, phonenumbers.E164), phonenumbers.IsValidNumber(phoneNumber)
+}
+
+func GetCountryCode(prefix string, phone string) (string, error) {
+	if prefix == "" || phone == "" {
+		return "", nil
+	}
+
+	phoneNumber, err := phonenumbers.Parse(fmt.Sprintf("+%s%s", prefix, phone), "")
+	if err != nil {
+		return "", err
+	}
+	if err != nil {
+		return "", err
+	}
+
+	countryCode := phonenumbers.GetRegionCodeForNumber(phoneNumber)
+	if countryCode == "" {
+		return "", fmt.Errorf("country code not found for phone prefix: %s", prefix)
+	}
+
+	return countryCode, nil
+}
+
+func FilterField(field string) bool {
+	return ReFieldWhiteList.MatchString(field)
 }
