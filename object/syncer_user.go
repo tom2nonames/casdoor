@@ -124,7 +124,7 @@ func (syncer *Syncer) updateUser(user *OriginalUser) (bool, error) {
 func (syncer *Syncer) updateUserForOriginalFields(user *User) (bool, error) {
 	var err error
 	owner, name := util.GetOwnerAndNameFromId(user.GetId())
-	oldUser, err := getUserById(owner, name)
+	oldUser, err := getUser(owner, name)
 	if oldUser == nil || err != nil {
 		return false, err
 	}

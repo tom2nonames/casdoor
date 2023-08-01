@@ -16,6 +16,7 @@ package object
 
 import (
 	"fmt"
+	"github.com/casdoor/casdoor/util"
 	"time"
 )
 
@@ -91,6 +92,26 @@ func (syncer *Syncer) syncUsers() {
 	_, err = AddUsersInBatch(newUsers)
 	if err != nil {
 		panic(err)
+	}
+
+	for _, user := range newUsers {
+		record := &Record{
+			Name:         util.GenerateId(),
+			CreatedTime:  util.GetCurrentTime(),
+			ClientIp:     "127.0.0.1",
+			User:         user.Name,
+			Method:       "POST",
+			RequestUri:   "/api/add-user",
+			Action:       "add-user",
+			Object:       "",
+			IsTriggered:  false,
+			Organization: user.Owner,
+		}
+
+		if err = SendWebhooks(record); err != nil {
+			fmt.Printf(" SendWebhooks Error: %v\n", err)
+		}
+
 	}
 
 	if !syncer.IsReadOnly {

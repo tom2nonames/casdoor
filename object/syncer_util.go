@@ -191,6 +191,15 @@ func (syncer *Syncer) getOriginalUsersFromMap(results []map[string]string) []*Or
 				value = result[tableColumnName]
 			}
 			syncer.setUserByKeyValue(originalUser, tableColumn.CasdoorName, value)
+			//来自go-ldap-admin的数据 同步钉钉的信息
+			v, ok := result["source"]
+			if ok && v == "dingtalk" {
+				originalUser.DingTalk = result["source_user_id"]
+				originalUser.Properties["oauth_DingTalk_username"] = result["nickname"]
+				originalUser.Properties["oauth_DingTalk_displayName"] = result["nickname"]
+				originalUser.Properties["oauth_DingTalk_id"] = result["source_user_id"]
+				originalUser.Properties["oauth_DingTalk_unionId"] = result["source_union_id"]
+			}
 		}
 
 		if syncer.Type == "Keycloak" {
