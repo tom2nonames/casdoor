@@ -16,11 +16,21 @@ package controllers
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
+
+type WechatMiniprogramBind struct {
+	ClientId    string `json:"client_id"`
+	WechatCode  string `json:"wechat_code"`
+	Phone       string `json:"phone"`
+	VerifyCode  string `json:"verify_code"`
+	CountryCode string `json:"country_code"`
+	//Organization string `json:"organization"`
+}
 
 // GetTokens
 // @Title GetTokens
@@ -366,5 +376,58 @@ func (c *ApiController) IntrospectToken() {
 		Iss:       jwtToken.Issuer,
 		Jti:       jwtToken.ID,
 	}
+	c.ServeJSON()
+}
+
+func (c *ApiController) WechatMiniprogramPhoneBind() {
+	var param WechatMiniprogramBind
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &param)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	application, err := object.GetApplicationByClientId(param.ClientId)
+	if err != nil {
+		c.ResponseError(err.Error(), nil)
+		return
+	}
+
+	var user *object.User
+	if user, err = object.GetUserByPhone(application.Organization, param.Phone); err != nil {
+		c.ResponseError(err.Error(), nil)
+		return
+	}
+
+	var checkDest string
+	var ok bool
+	param.CountryCode = user.GetCountryCode(param.CountryCode)
+	if checkDest, ok = util.GetE164Number(param.Phone, param.CountryCode); !ok {
+		c.ResponseError(fmt.Sprintf(c.T("verification:Phone number is invalid in your region %s"), param.CountryCode))
+		return
+	}
+
+	checkResult := object.CheckSigninCode(user, checkDest, param.VerifyCode, c.GetAcceptLanguage())
+	if len(checkResult) != 0 {
+		c.ResponseError(fmt.Sprintf("%s - %s", "phone", checkResult))
+		return
+	}
+
+	// disable the verification code
+	err = object.DisableVerificationCode(checkDest)
+	if err != nil {
+		c.ResponseError(err.Error(), nil)
+		return
+	}
+
+	host := c.Ctx.Request.Host
+	oAuthtoken, err := object.GetOAuthToken("", application.ClientId, application.ClientSecret, param.WechatCode, "", "", user.Name, "", host, "", "miniprogram_bind_phone", user.Avatar, c.GetAcceptLanguage(), "")
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = oAuthtoken
+	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }

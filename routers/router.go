@@ -44,6 +44,8 @@ func initAPI() {
 	)
 	beego.AddNamespace(ns)
 
+	beego.Router("/api/wechat-miniprogram-phone-bind", &controllers.ApiController{}, "POST:WechatMiniprogramPhoneBind")
+
 	beego.Router("/api/signup", &controllers.ApiController{}, "POST:Signup")
 	beego.Router("/api/login", &controllers.ApiController{}, "POST:Login")
 	beego.Router("/api/get-app-login", &controllers.ApiController{}, "GET:GetApplicationLogin")

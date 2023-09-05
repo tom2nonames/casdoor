@@ -386,6 +386,14 @@ func GetOAuthToken(grantType string, clientId string, clientSecret string, code 
 		return nil, err
 	}
 
+	if tag == "miniprogram_bind_phone" {
+		// Wechat Mini Program
+		token, tokenError, err = GetWechatMiniProgramBindPhoneToken(application, code, host, username, avatar, lang, sessionID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if tag == "wechat_miniprogram" {
 		// Wechat Mini Program
 		token, tokenError, err = GetWechatMiniProgramToken(application, code, host, username, avatar, lang, sessionID)
@@ -841,6 +849,131 @@ func GetWechatMiniProgramToken(application *Application, code string, host strin
 			return nil, nil, err
 		}
 	}
+
+	err = ExtendUserWithRolesAndPermissions(user)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	accessToken, refreshToken, tokenName, err := generateJwtToken(application, user, "", "", host, sessionID)
+	if err != nil {
+		return nil, &TokenError{
+			Error:            EndpointError,
+			ErrorDescription: fmt.Sprintf("generate jwt token error: %s", err.Error()),
+		}, nil
+	}
+
+	token := &Token{
+		Owner:        application.Owner,
+		Name:         tokenName,
+		CreatedTime:  util.GetCurrentTime(),
+		Application:  application.Name,
+		Organization: user.Owner,
+		User:         user.Name,
+		Code:         session.SessionKey, // a trick, because miniprogram does not use the code, so use the code field to save the session_key
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    application.ExpireInHours * 60,
+		Scope:        "",
+		TokenType:    "Bearer",
+		CodeIsUsed:   true,
+	}
+	_, err = AddToken(token)
+	if err != nil {
+		return nil, nil, err
+	}
+	return token, nil, nil
+}
+
+func GetWechatMiniProgramBindPhoneToken(application *Application, code string, host string, username string, avatar string, lang string, sessionID string) (*Token, *TokenError, error) {
+	mpProvider := GetWechatMiniProgramProvider(application)
+	if mpProvider == nil {
+		return nil, &TokenError{
+			Error:            InvalidClient,
+			ErrorDescription: "the application does not support wechat mini program",
+		}, nil
+	}
+	provider, err := GetProvider(util.GetId("admin", mpProvider.Name))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	mpIdp := idp.NewWeChatMiniProgramIdProvider(provider.ClientId, provider.ClientSecret)
+	session, err := mpIdp.GetSessionByCode(code)
+	if err != nil {
+		return nil, &TokenError{
+			Error:            InvalidGrant,
+			ErrorDescription: fmt.Sprintf("get wechat mini program session error: %s", err.Error()),
+		}, nil
+	}
+
+	openId, unionId := session.Openid, session.Unionid
+	if openId == "" && unionId == "" {
+		return nil, &TokenError{
+			Error:            InvalidRequest,
+			ErrorDescription: "the wechat mini program session is invalid",
+		}, nil
+	}
+
+	owner, name := util.GetOwnerAndNameFromId(username)
+	user, err := GetUserByField(owner, "name", name)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	user.WeChat = openId
+	user.Properties = map[string]string{
+		UserPropertiesWechatOpenId:  openId,
+		UserPropertiesWechatUnionId: unionId,
+	}
+
+	_, err = updateUser(username, user, []string{"properties", "wechat"})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	//user, err := getUserByWechatId(application.Organization, openId, unionId)
+	//if err != nil {
+	//	return nil, nil, err
+	//}
+	//if user == nil {
+	//	if !application.EnableSignUp {
+	//		return nil, &TokenError{
+	//			Error:            InvalidGrant,
+	//			ErrorDescription: "the application does not allow to sign up new account",
+	//		}, nil
+	//	}
+	//	// Add new user
+	//	var name string
+	//	if CheckUsername(username, lang) == "" {
+	//		name = username
+	//	} else {
+	//		name = fmt.Sprintf("wechat-%s", openId)
+	//	}
+	//
+	//	user = &User{
+	//		Owner:             application.Organization,
+	//		Id:                util.GenerateId(),
+	//		Name:              name,
+	//		Avatar:            avatar,
+	//		SignupApplication: application.Name,
+	//		WeChat:            openId,
+	//		Type:              "normal-user",
+	//		CreatedTime:       util.GetCurrentTime(),
+	//		IsAdmin:           false,
+	//		IsGlobalAdmin:     false,
+	//		IsForbidden:       false,
+	//		IsDeleted:         false,
+	//		Properties: map[string]string{
+	//			UserPropertiesWechatOpenId:  openId,
+	//			UserPropertiesWechatUnionId: unionId,
+	//		},
+	//	}
+	//	_, err = AddUser(user)
+	//	if err != nil {
+	//		return nil, nil, err
+	//	}
+	//}
 
 	err = ExtendUserWithRolesAndPermissions(user)
 	if err != nil {

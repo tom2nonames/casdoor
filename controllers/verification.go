@@ -185,6 +185,10 @@ func (c *ApiController) SendVerificationCode() {
 			return
 		}
 
+		//Default code is China
+		if vform.CountryCode == "" {
+			vform.CountryCode = "CN"
+		}
 		if phone, ok := util.GetE164Number(vform.Dest, vform.CountryCode); !ok {
 			c.ResponseError(fmt.Sprintf(c.T("verification:Phone number is invalid in your region %s"), vform.CountryCode))
 			return
