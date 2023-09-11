@@ -133,6 +133,7 @@ p, *, *, *, /api/metrics, *, *
 p, *, *, GET, /api/get-pricing, *, *
 p, *, *, GET, /api/get-plan, *, *
 p, *, *, GET, /api/get-organization-names, *, *
+p, *, *, POST, /api/wechat-miniprogram-phone-bind, *, *
 `
 
 		sa := stringadapter.NewAdapter(ruleText)
