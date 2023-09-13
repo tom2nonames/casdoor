@@ -421,7 +421,7 @@ func (c *ApiController) WechatMiniprogramPhoneBind() {
 	}
 
 	host := c.Ctx.Request.Host
-	oAuthtoken, err := object.GetOAuthToken("", application.ClientId, application.ClientSecret, param.WechatCode, "", "", user.Name, "", host, "", "miniprogram_bind_phone", user.Avatar, c.GetAcceptLanguage(), "")
+	oAuthtoken, err := object.GetOAuthToken("", application.ClientId, application.ClientSecret, param.WechatCode, "", "", user.Owner+"/"+user.Name, "", host, "", "miniprogram_bind_phone", user.Avatar, c.GetAcceptLanguage(), "")
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
