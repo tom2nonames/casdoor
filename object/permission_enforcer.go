@@ -302,6 +302,9 @@ func BatchEnforce(permissionRules []PermissionRule) []bool {
 	wg.Add(len(groups))
 	for _, g := range groupSlice {
 		permission, _ := GetPermission(g.id)
+		if permission == nil {
+			permission = &Permission{}
+		}
 		enforcer := getEnforcer(permission)
 		go func(g *group) {
 

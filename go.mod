@@ -5,13 +5,14 @@ go 1.16
 require (
 	github.com/Masterminds/squirrel v1.5.3
 	github.com/RobotsAndPencils/go-saml v0.0.0-20170520135329-fb13cb52a46b
+	github.com/agiledragon/gomonkey/v2 v2.11.0
 	github.com/alexedwards/argon2id v0.0.0-20211130144151-3585854a6387
 	github.com/aliyun/alibaba-cloud-sdk-go v1.62.188 // indirect
 	github.com/aws/aws-sdk-go v1.44.4
 	github.com/beego/beego v1.12.12
 	github.com/beevik/etree v1.1.0
 	github.com/casbin/casbin v1.9.1 // indirect
-	github.com/casbin/casbin/v2 v2.30.1
+	github.com/casbin/casbin/v2 v2.81.0
 	github.com/casdoor/go-sms-sender v0.6.1
 	github.com/casdoor/gomail/v2 v2.0.1
 	github.com/casdoor/oss v1.2.0

@@ -104,6 +104,11 @@ func initAPI() {
 	beego.Router("/api/delete-permission", &controllers.ApiController{}, "POST:DeletePermission")
 	beego.Router("/api/upload-permissions", &controllers.ApiController{}, "POST:UploadPermissions")
 
+	beego.Router("/api/add-permission-view", &controllers.ApiController{}, "POST:AddPermissionView")
+	beego.Router("/api/add-permission-view-assign", &controllers.ApiController{}, "POST:AddPermissionViewAssign")
+	beego.Router("/api/permission-view-enforce", &controllers.ApiController{}, "POST:PermissionViewEnforce")
+	beego.Router("/api/permission-view-generate-json-tree", &controllers.ApiController{}, "POST:PermissionViewGenerateJsonTree")
+
 	beego.Router("/api/url-action-authz", &controllers.ApiController{}, "POST:UrlActionAuthz")
 	beego.Router("/api/enforce", &controllers.ApiController{}, "POST:Enforce")
 	beego.Router("/api/batch-enforce", &controllers.ApiController{}, "POST:BatchEnforce")
