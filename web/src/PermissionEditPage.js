@@ -250,6 +250,16 @@ class PermissionEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:AbacRule"), i18next.t("general:AbacRule - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.permission.abacRule} onChange={e => {
+              this.updatePermissionField("abacRule", e.target.value);
+            }} />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("role:Sub users"), i18next.t("role:Sub users - Tooltip"))} :
           </Col>
           <Col span={22} >
@@ -316,7 +326,7 @@ class PermissionEditPage extends React.Component {
             {Setting.getLabel(i18next.t("permission:Actions"), i18next.t("permission:Actions - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} mode="multiple" style={{width: "100%"}} value={this.state.permission.actions} onChange={(value => {
+            <Select virtual={false} mode="tags" style={{width: "100%"}} value={this.state.permission.actions} onChange={(value => {
               this.updatePermissionField("actions", value);
             })}
             options={[

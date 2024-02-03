@@ -17,15 +17,14 @@ package object
 import (
 	"fmt"
 	"github.com/beego/beego/logs"
-	"sort"
-	"strings"
-	"sync"
-
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/log"
 	"github.com/casbin/casbin/v2/model"
 	"github.com/casdoor/casdoor/conf"
 	xormadapter "github.com/casdoor/xorm-adapter/v3"
+	"sort"
+	"strings"
+	"sync"
 )
 
 func getEnforcer(permission *Permission) *casbin.Enforcer {
@@ -109,10 +108,28 @@ func getPolicies(permission *Permission) [][]string {
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
-						policies = append(policies, []string{user, domain, resource, strings.ToLower(action)})
+						policy := []string{user, domain, resource, strings.ToLower(action)}
+						if permission.AbacRule != "" {
+							policy = append(policy, permission.AbacRule)
+						}
+						policies = append(policies, policy)
+						//if permission.AbacRule == "" {
+						//	policies = append(policies, []string{user, domain, resource, strings.ToLower(action)})
+						//} else {
+						//	policies = append(policies, []string{user, domain, resource, strings.ToLower(action), permission.AbacRule})
+						//}
 					}
 				} else {
-					policies = append(policies, []string{user, resource, strings.ToLower(action)})
+					policy := []string{user, resource, strings.ToLower(action)}
+					if permission.AbacRule != "" {
+						policy = append(policy, permission.AbacRule)
+					}
+					policies = append(policies, policy)
+					//if permission.AbacRule == "" {
+					//	policies = append(policies, []string{user, resource, strings.ToLower(action)})
+					//} else {
+					//	policies = append(policies, []string{user, resource, strings.ToLower(action), permission.AbacRule})
+					//}
 				}
 			}
 		}
@@ -123,10 +140,10 @@ func getPolicies(permission *Permission) [][]string {
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
-						policies = append(policies, []string{role, domain, resource, strings.ToLower(action)})
+						policies = append(policies, []string{role, domain, resource, strings.ToLower(action), permission.AbacRule})
 					}
 				} else {
-					policies = append(policies, []string{role, resource, strings.ToLower(action)})
+					policies = append(policies, []string{role, resource, strings.ToLower(action), permission.AbacRule})
 				}
 			}
 		}
@@ -266,6 +283,81 @@ func Enforce(permission *Permission, request *CasbinRequest, permissionIds ...st
 //	return enforcer.BatchEnforce(*requests)
 //}
 
+//func BatchEnforce(permissionRules []PermissionRule) []bool {
+//	allows := make([]bool, len(permissionRules))
+//	type group struct {
+//		requests [][]interface{}
+//		rank     []int
+//		id       string
+//	}
+//	groups := make(map[string]*group)
+//	for i, permissionRule := range permissionRules {
+//		r := []interface{}{permissionRule.V0, permissionRule.V1, permissionRule.V2}
+//		if permissionRule.V3 != "" {
+//			r = append(r, permissionRule.V3)
+//		}
+//		if groups[permissionRule.Id] == nil {
+//			groups[permissionRule.Id] = &group{}
+//		}
+//		groups[permissionRule.Id].requests = append(groups[permissionRule.Id].requests, r)
+//		groups[permissionRule.Id].rank = append(groups[permissionRule.Id].rank, i)
+//		groups[permissionRule.Id].id = permissionRule.Id
+//	}
+//
+//	keys := make([]string, 0)
+//
+//	var groupSlice []*group
+//	for k, _ := range groups {
+//		keys = append(keys, k)
+//	}
+//	sort.Strings(keys)
+//	for _, k := range keys {
+//		groupSlice = append(groupSlice, groups[k])
+//	}
+//
+//	wg := sync.WaitGroup{}
+//	wg.Add(len(groups))
+//	for _, g := range groupSlice {
+//		permission, _ := GetPermission(g.id)
+//		if permission == nil {
+//			permission = &Permission{}
+//		}
+//		enforcer := getEnforcer(permission)
+//		go func(g *group) {
+//
+//			defer func() {
+//				if r := recover(); r != nil {
+//					var ok bool
+//					err, ok := r.(error)
+//					if !ok {
+//						err = fmt.Errorf("%v", r)
+//					}
+//					logs.Error("goroutine panic: %v", err)
+//					wg.Done()
+//				}
+//			}()
+//
+//			allow, err := enforcer.BatchEnforce(g.requests)
+//			if err != nil {
+//				panic(err)
+//			}
+//
+//			if len(allow) != len(g.rank) {
+//				panic("length does not match")
+//			}
+//
+//			for k, v := range allow {
+//				allows[g.rank[k]] = v
+//			}
+//			wg.Done()
+//		}(g)
+//
+//	}
+//	wg.Wait()
+//
+//	return allows
+//}
+
 func BatchEnforce(permissionRules []PermissionRule) []bool {
 	allows := make([]bool, len(permissionRules))
 	type group struct {
@@ -298,6 +390,8 @@ func BatchEnforce(permissionRules []PermissionRule) []bool {
 		groupSlice = append(groupSlice, groups[k])
 	}
 
+	//enforcers := make(map[string]*casbin.Enforcer)
+	var enforcers sync.Map
 	wg := sync.WaitGroup{}
 	wg.Add(len(groups))
 	for _, g := range groupSlice {
@@ -305,9 +399,17 @@ func BatchEnforce(permissionRules []PermissionRule) []bool {
 		if permission == nil {
 			permission = &Permission{}
 		}
-		enforcer := getEnforcer(permission)
-		go func(g *group) {
 
+		var enforcer *casbin.Enforcer
+		v, ok := enforcers.Load(permission.Adapter)
+		if !ok {
+			enforcer = getEnforcer(permission)
+			enforcers.Store(permission.Adapter, enforcer)
+		} else {
+			enforcer = v.(*casbin.Enforcer)
+		}
+
+		go func(g *group) {
 			defer func() {
 				if r := recover(); r != nil {
 					var ok bool

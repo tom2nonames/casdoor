@@ -15,8 +15,10 @@
 package object
 
 import (
+	"errors"
 	"fmt"
 	"github.com/casdoor/casdoor/conf"
+	"regexp"
 	"strings"
 
 	"github.com/casbin/casbin/v2"
@@ -41,6 +43,7 @@ type Permission struct {
 	ResourceType string   `xorm:"varchar(100)" json:"resourceType"`
 	Resources    []string `xorm:"mediumtext" json:"resources"`
 	Actions      []string `xorm:"mediumtext" json:"actions"`
+	AbacRule     string   `xorm:"mediumtext" json:"abacRule"`
 	Effect       string   `xorm:"varchar(100)" json:"effect"`
 	IsEnabled    bool     `json:"isEnabled"`
 
@@ -174,6 +177,10 @@ func checkPermissionValid(permission *Permission) error {
 }
 
 func UpdatePermission(id string, permission *Permission) (bool, error) {
+	err := checkPermissionAbacRule(permission)
+	if err != nil {
+		return false, err
+	}
 	//checkPermissionValid(permission)
 	owner, name := util.GetOwnerAndNameFromId(id)
 	oldPermission, err := getPermission(owner, name)
@@ -192,6 +199,11 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 	//if len(permission.Domains) > 0 {
 	//	newIndex = 2
 	//}
+
+	if oldPermission.AbacRule != permission.AbacRule {
+		removePolicies(oldPermission)
+		addPolicies(permission)
+	}
 
 	//If the adapter is modified, move the data to the new adapter
 	if oldPermission.Adapter != permission.Adapter {
@@ -285,6 +297,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Domains:   domainsAdded,
 			Resources: permission.Resources,
 			Actions:   permission.Actions,
+			AbacRule:  permission.AbacRule,
 		}
 		operateGroupingPoliciesByPermission(permissionMock, newEnforcer, true)
 
@@ -301,6 +314,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Resources: oldPermission.Resources,
 			Actions:   oldPermission.Actions,
 			Domains:   oldPermission.Domains,
+			AbacRule:  oldPermission.AbacRule,
 		}
 		operatePoliciesByPermission(permissionMock, oldEnforcer, false, true)
 
@@ -315,6 +329,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Resources: permission.Resources,
 			Actions:   permission.Actions,
 			Domains:   permission.Domains,
+			AbacRule:  permission.AbacRule,
 		}
 		operatePoliciesByPermission(permissionMock, newEnforcer, true, true)
 	}
@@ -345,6 +360,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Resources: oldPermission.Resources,
 			Actions:   oldPermission.Actions,
 			Domains:   oldPermission.Domains,
+			AbacRule:  oldPermission.AbacRule,
 		}
 		operatePoliciesByPermission(permissionMock, oldEnforcer, false, false)
 
@@ -359,6 +375,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Domains:   permission.Domains,
 			Resources: permission.Resources,
 			Actions:   permission.Actions,
+			AbacRule:  permission.AbacRule,
 		}
 
 		operateGroupingPoliciesByPermission(permissionMock, newEnforcer, true)
@@ -385,6 +402,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Domains:   permission.Domains,
 			Resources: resourcesAdded,
 			Actions:   permission.Actions,
+			AbacRule:  permission.AbacRule,
 		}
 		operatePoliciesByPermission(permissionMock, newEnforcer, true, false)
 		operatePoliciesByPermission(permissionMock, newEnforcer, true, true)
@@ -412,6 +430,7 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 			Domains:   permission.Domains,
 			Resources: permission.Resources,
 			Actions:   actionsAdded,
+			AbacRule:  permission.AbacRule,
 		}
 		operatePoliciesByPermission(permissionMock, newEnforcer, true, false)
 		operatePoliciesByPermission(permissionMock, newEnforcer, true, true)
@@ -427,6 +446,10 @@ func UpdatePermission(id string, permission *Permission) (bool, error) {
 }
 
 func AddPermission(permission *Permission) (bool, error) {
+	err := checkPermissionAbacRule(permission)
+	if err != nil {
+		return false, err
+	}
 	affected, err := adapter.Engine.Insert(permission)
 	if err != nil {
 		return false, err
@@ -734,20 +757,47 @@ func operatePoliciesByPermission(permission *Permission, enforcer *casbin.Enforc
 			for _, action := range permission.Actions {
 				if domainExist {
 					for _, domain := range permission.Domains {
+						//if isAdd {
+						//	_, err = enforcer.AddNamedPolicy("p", v, domain, resource, strings.ToLower(action), permission.AbacRule)
+						//} else {
+						//	_, err = enforcer.RemoveNamedPolicy("p", v, domain, resource, strings.ToLower(action), permission.AbacRule)
+						//}
+						//if err != nil {
+						//	panic(err)
+						//}
+
+						policy := []interface{}{v, domain, resource, strings.ToLower(action)}
+						if permission.AbacRule != "" {
+							policy = append(policy, permission.AbacRule)
+						}
 						if isAdd {
-							_, err = enforcer.AddNamedPolicy("p", v, domain, resource, strings.ToLower(action))
+							_, err = enforcer.AddNamedPolicy("p", policy...)
 						} else {
-							_, err = enforcer.RemoveNamedPolicy("p", v, domain, resource, strings.ToLower(action))
+							_, err = enforcer.RemoveNamedPolicy("p", policy...)
 						}
 						if err != nil {
 							panic(err)
 						}
+
 					}
 				} else {
+					//if isAdd {
+					//	_, err = enforcer.AddNamedPolicy("p", v, resource, strings.ToLower(action), permission.AbacRule)
+					//} else {
+					//	_, err = enforcer.RemoveNamedPolicy("p", v, resource, strings.ToLower(action), permission.AbacRule)
+					//}
+					//if err != nil {
+					//	panic(err)
+					//}
+
+					policy := []interface{}{v, resource, strings.ToLower(action)}
+					if permission.AbacRule != "" {
+						policy = append(policy, permission.AbacRule)
+					}
 					if isAdd {
-						_, err = enforcer.AddNamedPolicy("p", v, resource, action)
+						_, err = enforcer.AddNamedPolicy("p", policy...)
 					} else {
-						_, err = enforcer.RemoveNamedPolicy("p", v, resource, action)
+						_, err = enforcer.RemoveNamedPolicy("p", policy...)
 					}
 					if err != nil {
 						panic(err)
@@ -787,4 +837,27 @@ func GroupPermissionsByModelAdapter(permissions []*Permission) map[string][]stri
 	}
 
 	return m
+}
+
+func checkPermissionAbacRule(permission *Permission) error {
+	if permission.AbacRule != "" {
+
+		permissionModel, err := getModel(permission.Owner, permission.Model)
+		if err != nil {
+			panic(err)
+		}
+
+		if !strings.Contains(permissionModel.ModelText, "sub_rule") {
+			return errors.New("Must include specific fields")
+		}
+
+		match, _ := regexp.MatchString(`"`, permission.AbacRule)
+		if match {
+			//error.Error("Cannot contain double quotation marks")
+			return errors.New("Cannot contain double quotation marks")
+		}
+
+	}
+
+	return nil
 }
