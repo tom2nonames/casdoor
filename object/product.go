@@ -18,7 +18,7 @@ import (
 	"fmt"
 
 	"github.com/casdoor/casdoor/util"
-	"xorm.io/core"
+	"github.com/xorm-io/core"
 )
 
 type Product struct {
@@ -27,105 +27,103 @@ type Product struct {
 	CreatedTime string `xorm:"varchar(100)" json:"createdTime"`
 	DisplayName string `xorm:"varchar(100)" json:"displayName"`
 
-	Image     string   `xorm:"varchar(100)" json:"image"`
-	Detail    string   `xorm:"varchar(100)" json:"detail"`
-	Tag       string   `xorm:"varchar(100)" json:"tag"`
-	Currency  string   `xorm:"varchar(100)" json:"currency"`
-	Price     float64  `json:"price"`
-	Quantity  int      `json:"quantity"`
-	Sold      int      `json:"sold"`
-	Providers []string `xorm:"varchar(100)" json:"providers"`
-	ReturnUrl string   `xorm:"varchar(1000)" json:"returnUrl"`
+	Image       string   `xorm:"varchar(100)" json:"image"`
+	Detail      string   `xorm:"varchar(255)" json:"detail"`
+	Description string   `xorm:"varchar(100)" json:"description"`
+	Tag         string   `xorm:"varchar(100)" json:"tag"`
+	Currency    string   `xorm:"varchar(100)" json:"currency"`
+	Price       float64  `json:"price"`
+	Quantity    int      `json:"quantity"`
+	Sold        int      `json:"sold"`
+	Providers   []string `xorm:"varchar(100)" json:"providers"`
+	ReturnUrl   string   `xorm:"varchar(1000)" json:"returnUrl"`
 
 	State string `xorm:"varchar(100)" json:"state"`
 
 	ProviderObjs []*Provider `xorm:"-" json:"providerObjs"`
 }
 
-func GetProductCount(owner, field, value string) int {
+func GetProductCount(owner, field, value string) (int64, error) {
 	session := GetSession(owner, -1, -1, field, value, "", "")
-	count, err := session.Count(&Product{})
-	if err != nil {
-		panic(err)
-	}
-
-	return int(count)
+	return session.Count(&Product{})
 }
 
-func GetProducts(owner string) []*Product {
+func GetProducts(owner string) ([]*Product, error) {
 	products := []*Product{}
 	err := adapter.Engine.Desc("created_time").Find(&products, &Product{Owner: owner})
 	if err != nil {
-		panic(err)
+		return products, err
 	}
 
-	return products
+	return products, nil
 }
 
-func GetPaginationProducts(owner string, offset, limit int, field, value, sortField, sortOrder string) []*Product {
+func GetPaginationProducts(owner string, offset, limit int, field, value, sortField, sortOrder string) ([]*Product, error) {
 	products := []*Product{}
 	session := GetSession(owner, offset, limit, field, value, sortField, sortOrder)
 	err := session.Find(&products)
 	if err != nil {
-		panic(err)
+		return products, err
 	}
 
-	return products
+	return products, nil
 }
 
-func getProduct(owner string, name string) *Product {
+func getProduct(owner string, name string) (*Product, error) {
 	if owner == "" || name == "" {
-		return nil
+		return nil, nil
 	}
 
 	product := Product{Owner: owner, Name: name}
 	existed, err := adapter.Engine.Get(&product)
 	if err != nil {
-		panic(err)
+		return &product, nil
 	}
 
 	if existed {
-		return &product
+		return &product, nil
 	} else {
-		return nil
+		return nil, nil
 	}
 }
 
-func GetProduct(id string) *Product {
+func GetProduct(id string) (*Product, error) {
 	owner, name := util.GetOwnerAndNameFromId(id)
 	return getProduct(owner, name)
 }
 
-func UpdateProduct(id string, product *Product) bool {
+func UpdateProduct(id string, product *Product) (bool, error) {
 	owner, name := util.GetOwnerAndNameFromId(id)
-	if getProduct(owner, name) == nil {
-		return false
+	if p, err := getProduct(owner, name); err != nil {
+		return false, err
+	} else if p == nil {
+		return false, nil
 	}
 
 	affected, err := adapter.Engine.ID(core.PK{owner, name}).AllCols().Update(product)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
-func AddProduct(product *Product) bool {
+func AddProduct(product *Product) (bool, error) {
 	affected, err := adapter.Engine.Insert(product)
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
-func DeleteProduct(product *Product) bool {
+func DeleteProduct(product *Product) (bool, error) {
 	affected, err := adapter.Engine.ID(core.PK{product.Owner, product.Name}).Delete(&Product{})
 	if err != nil {
-		panic(err)
+		return false, err
 	}
 
-	return affected != 0
+	return affected != 0, nil
 }
 
 func (product *Product) GetId() string {
@@ -142,7 +140,11 @@ func (product *Product) isValidProvider(provider *Provider) bool {
 }
 
 func (product *Product) getProvider(providerId string) (*Provider, error) {
-	provider := getProvider(product.Owner, providerId)
+	provider, err := getProvider(product.Owner, providerId)
+	if err != nil {
+		return nil, err
+	}
+
 	if provider == nil {
 		return nil, fmt.Errorf("the payment provider: %s does not exist", providerId)
 	}
@@ -154,20 +156,24 @@ func (product *Product) getProvider(providerId string) (*Provider, error) {
 	return provider, nil
 }
 
-func BuyProduct(id string, providerName string, user *User, host string) (string, error) {
-	product := GetProduct(id)
+func BuyProduct(id string, providerName string, user *User, host string) (string, string, error) {
+	product, err := GetProduct(id)
+	if err != nil {
+		return "", "", err
+	}
+
 	if product == nil {
-		return "", fmt.Errorf("the product: %s does not exist", id)
+		return "", "", fmt.Errorf("the product: %s does not exist", id)
 	}
 
 	provider, err := product.getProvider(providerName)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	pProvider, _, err := provider.getPaymentProvider()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	owner := product.Owner
@@ -180,9 +186,9 @@ func BuyProduct(id string, providerName string, user *User, host string) (string
 	returnUrl := fmt.Sprintf("%s/payments/%s/result", originFrontend, paymentName)
 	notifyUrl := fmt.Sprintf("%s/api/notify-payment/%s/%s/%s/%s", originBackend, owner, providerName, productName, paymentName)
 
-	payUrl, err := pProvider.Pay(providerName, productName, payerName, paymentName, productDisplayName, product.Price, returnUrl, notifyUrl)
+	payUrl, orderId, err := pProvider.Pay(providerName, productName, payerName, paymentName, productDisplayName, product.Price, product.Currency, returnUrl, notifyUrl)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
 	payment := Payment{
@@ -204,21 +210,40 @@ func BuyProduct(id string, providerName string, user *User, host string) (string
 		ReturnUrl:          product.ReturnUrl,
 		State:              "Created",
 	}
-	affected := AddPayment(&payment)
-	if !affected {
-		return "", fmt.Errorf("failed to add payment: %s", util.StructToJson(payment))
+
+	if provider.Type == "Dummy" {
+		payment.State = "Paid"
 	}
 
-	return payUrl, err
+	affected, err := AddPayment(&payment)
+	if err != nil {
+		return "", "", err
+	}
+
+	if !affected {
+		return "", "", fmt.Errorf("failed to add payment: %s", util.StructToJson(payment))
+	}
+
+	return payUrl, orderId, err
 }
 
-func ExtendProductWithProviders(product *Product) {
+func ExtendProductWithProviders(product *Product) error {
+	if product == nil {
+		return nil
+	}
+
 	product.ProviderObjs = []*Provider{}
 
-	m := getProviderMap(product.Owner)
+	m, err := getProviderMap(product.Owner)
+	if err != nil {
+		return err
+	}
+
 	for _, providerItem := range product.Providers {
 		if provider, ok := m[providerItem]; ok {
 			product.ProviderObjs = append(product.ProviderObjs, provider)
 		}
 	}
+
+	return nil
 }

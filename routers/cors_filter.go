@@ -17,7 +17,7 @@ package routers
 import (
 	"net/http"
 
-	"github.com/astaxie/beego/context"
+	"github.com/beego/beego/context"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/object"
 )
@@ -34,9 +34,14 @@ func CorsFilter(ctx *context.Context) {
 	originConf := conf.GetConfigString("origin")
 
 	if origin != "" && originConf != "" && origin != originConf {
-		if object.IsAllowOrigin(origin) {
+		ok, err := object.IsOriginAllowed(origin)
+		if err != nil {
+			panic(err)
+		}
+
+		if ok {
 			ctx.Output.Header(headerAllowOrigin, origin)
-			ctx.Output.Header(headerAllowMethods, "POST, GET, OPTIONS")
+			ctx.Output.Header(headerAllowMethods, "POST, GET, OPTIONS, DELETE")
 			ctx.Output.Header(headerAllowHeaders, "Content-Type, Authorization")
 		} else {
 			ctx.ResponseWriter.WriteHeader(http.StatusForbidden)
@@ -47,5 +52,12 @@ func CorsFilter(ctx *context.Context) {
 			ctx.ResponseWriter.WriteHeader(http.StatusOK)
 			return
 		}
+	}
+
+	if ctx.Input.Method() == "OPTIONS" {
+		ctx.Output.Header(headerAllowOrigin, "*")
+		ctx.Output.Header(headerAllowMethods, "POST, GET, OPTIONS, DELETE")
+		ctx.ResponseWriter.WriteHeader(http.StatusOK)
+		return
 	}
 }

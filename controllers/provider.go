@@ -17,7 +17,7 @@ package controllers
 import (
 	"encoding/json"
 
-	"github.com/astaxie/beego/utils/pagination"
+	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -37,13 +37,83 @@ func (c *ApiController) GetProviders() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+
+	ok, isMaskEnabled := c.IsMaskedEnabled()
+	if !ok {
+		return
+	}
+
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetMaskedProviders(object.GetProviders(owner))
-		c.ServeJSON()
+		providers, err := object.GetProviders(owner)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.ResponseOk(object.GetMaskedProviders(providers, isMaskEnabled))
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetProviderCount(owner, field, value)))
-		providers := object.GetMaskedProviders(object.GetPaginationProviders(owner, paginator.Offset(), limit, field, value, sortField, sortOrder))
+		count, err := object.GetProviderCount(owner, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		paginationProviders, err := object.GetPaginationProviders(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		providers := object.GetMaskedProviders(paginationProviders, isMaskEnabled)
+		c.ResponseOk(providers, paginator.Nums())
+	}
+}
+
+// GetGlobalProviders
+// @Title GetGlobalProviders
+// @Tag Provider API
+// @Description get Global providers
+// @Success 200 {array} object.Provider The Response object
+// @router /get-global-providers [get]
+func (c *ApiController) GetGlobalProviders() {
+	limit := c.Input().Get("pageSize")
+	page := c.Input().Get("p")
+	field := c.Input().Get("field")
+	value := c.Input().Get("value")
+	sortField := c.Input().Get("sortField")
+	sortOrder := c.Input().Get("sortOrder")
+
+	ok, isMaskEnabled := c.IsMaskedEnabled()
+	if !ok {
+		return
+	}
+
+	if limit == "" || page == "" {
+		globalProviders, err := object.GetGlobalProviders()
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.ResponseOk(object.GetMaskedProviders(globalProviders, isMaskEnabled))
+	} else {
+		limit := util.ParseInt(limit)
+		count, err := object.GetGlobalProviderCount(field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		paginationGlobalProviders, err := object.GetPaginationGlobalProviders(paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		providers := object.GetMaskedProviders(paginationGlobalProviders, isMaskEnabled)
 		c.ResponseOk(providers, paginator.Nums())
 	}
 }
@@ -52,21 +122,30 @@ func (c *ApiController) GetProviders() {
 // @Title GetProvider
 // @Tag Provider API
 // @Description get provider
-// @Param   id    query    string  true        "The id of the provider"
+// @Param   id     query    string  true        "The id ( owner/name ) of the provider"
 // @Success 200 {object} object.Provider The Response object
 // @router /get-provider [get]
 func (c *ApiController) GetProvider() {
 	id := c.Input().Get("id")
 
-	c.Data["json"] = object.GetMaskedProvider(object.GetProvider(id))
-	c.ServeJSON()
+	ok, isMaskEnabled := c.IsMaskedEnabled()
+	if !ok {
+		return
+	}
+	provider, err := object.GetProvider(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk(object.GetMaskedProvider(provider, isMaskEnabled))
 }
 
 // UpdateProvider
 // @Title UpdateProvider
 // @Tag Provider API
 // @Description update provider
-// @Param   id    query    string  true        "The id of the provider"
+// @Param   id     query    string  true        "The id ( owner/name ) of the provider"
 // @Param   body    body   object.Provider  true        "The details of the provider"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-provider [post]
@@ -95,6 +174,17 @@ func (c *ApiController) AddProvider() {
 	var provider object.Provider
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &provider)
 	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	count, err := object.GetProviderCount("", "", "")
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	if err := checkQuotaForProvider(int(count)); err != nil {
 		c.ResponseError(err.Error())
 		return
 	}

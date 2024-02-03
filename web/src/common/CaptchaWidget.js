@@ -14,7 +14,9 @@
 
 import React, {useEffect} from "react";
 
-export const CaptchaWidget = ({captchaType, subType, siteKey, clientSecret, onChange, clientId2, clientSecret2}) => {
+export const CaptchaWidget = (props) => {
+  const {captchaType, subType, siteKey, clientSecret, clientId2, clientSecret2, onChange} = props;
+
   const loadScript = (src) => {
     const tag = document.createElement("script");
     tag.async = false;
@@ -105,10 +107,25 @@ export const CaptchaWidget = ({captchaType, subType, siteKey, clientSecret, onCh
       }, 500);
       break;
     }
+    case "Cloudflare Turnstile": {
+      const tTimer = setInterval(() => {
+        if (!window.turnstile) {
+          loadScript("https://challenges.cloudflare.com/turnstile/v0/api.js");
+        }
+        if (window.turnstile && window.turnstile.render) {
+          window.turnstile.render("#captcha", {
+            sitekey: siteKey,
+            callback: onChange,
+          });
+          clearInterval(tTimer);
+        }
+      }, 300);
+      break;
+    }
     default:
       break;
     }
   }, [captchaType, subType, siteKey, clientSecret, clientId2, clientSecret2]);
 
-  return <div id="captcha"></div>;
+  return <div id="captcha" />;
 };

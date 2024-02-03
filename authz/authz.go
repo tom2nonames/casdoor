@@ -19,8 +19,10 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
-	xormadapter "github.com/casbin/xorm-adapter/v2"
 	"github.com/casdoor/casdoor/conf"
+	"github.com/casdoor/casdoor/object"
+	"github.com/casdoor/casdoor/util"
+	xormadapter "github.com/casdoor/xorm-adapter/v3"
 	stringadapter "github.com/qiangmzsx/string-adapter/v2"
 )
 
@@ -30,7 +32,9 @@ func InitAuthz() {
 	var err error
 
 	tableNamePrefix := conf.GetConfigString("tableNamePrefix")
-	a, err := xormadapter.NewAdapterWithTableName(conf.GetConfigString("driverName"), conf.GetConfigDataSourceName()+conf.GetConfigString("dbName"), "casbin_rule", tableNamePrefix, true)
+	driverName := conf.GetConfigString("driverName")
+	dataSourceName := conf.GetConfigRealDataSourceName(driverName)
+	a, err := xormadapter.NewAdapterWithTableName(driverName, dataSourceName, "casbin_rule", tableNamePrefix, true)
 	if err != nil {
 		panic(err)
 	}
@@ -76,13 +80,18 @@ m = (r.subOwner == p.subOwner || p.subOwner == "*") && \
 p, built-in, *, *, *, *, *
 p, app, *, *, *, *, *
 p, *, *, POST, /api/signup, *, *
-p, *, *, POST, /api/get-email-and-phone, *, *
+p, *, *, GET, /api/get-email-and-phone, *, *
 p, *, *, POST, /api/login, *, *
 p, *, *, GET, /api/get-app-login, *, *
 p, *, *, POST, /api/logout, *, *
 p, *, *, GET, /api/logout, *, *
 p, *, *, GET, /api/get-account, *, *
 p, *, *, GET, /api/userinfo, *, *
+p, *, *, GET, /api/user, *, *
+p, *, *, GET, /api/health, *, *
+p, *, *, POST, /api/webhook, *, *
+p, *, *, GET, /api/get-webhook-event, *, *
+p, *, *, GET, /api/get-captcha-status, *, *
 p, *, *, *, /api/login/oauth, *, *
 p, *, *, GET, /api/get-application, *, *
 p, *, *, GET, /api/get-organization-applications, *, *
@@ -101,6 +110,7 @@ p, *, *, POST, /api/set-password, *, *
 p, *, *, POST, /api/send-verification-code, *, *
 p, *, *, GET, /api/get-captcha, *, *
 p, *, *, POST, /api/verify-captcha, *, *
+p, *, *, POST, /api/verify-code, *, *
 p, *, *, POST, /api/reset-email-or-phone, *, *
 p, *, *, POST, /api/upload-resource, *, *
 p, *, *, GET, /.well-known/openid-configuration, *, *
@@ -112,11 +122,18 @@ p, *, *, *, /cas, *, *
 p, *, *, *, /api/webauthn, *, *
 p, *, *, GET, /api/get-release, *, *
 p, *, *, GET, /api/get-default-application, *, *
+p, *, *, POST, /api/url-action-authz, *, *
 p, *, *, POST, /api/enforce, *, *
 p, *, *, POST, /api/batch-enforce, *, *
 p, *, *, GET, /api/get-all-objects, *, *
 p, *, *, GET, /api/get-all-actions, *, *
 p, *, *, GET, /api/get-all-roles, *, *
+p, *, *, GET, /api/get-prometheus-info, *, *
+p, *, *, *, /api/metrics, *, *
+p, *, *, GET, /api/get-pricing, *, *
+p, *, *, GET, /api/get-plan, *, *
+p, *, *, GET, /api/get-organization-names, *, *
+p, *, *, POST, /api/wechat-miniprogram-phone-bind, *, *
 `
 
 		sa := stringadapter.NewAdapter(ruleText)
@@ -143,6 +160,15 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 		}
 	}
 
+	user, err := object.GetUser(util.GetId(subOwner, subName))
+	if err != nil {
+		panic(err)
+	}
+
+	if user != nil && user.IsAdmin && (subOwner == objOwner || (objOwner == "admin")) {
+		return true
+	}
+
 	res, err := Enforcer.Enforce(subOwner, subName, method, urlPath, objOwner, objName)
 	if err != nil {
 		panic(err)
@@ -153,7 +179,7 @@ func IsAllowed(subOwner string, subName string, method string, urlPath string, o
 
 func isAllowedInDemoMode(subOwner string, subName string, method string, urlPath string, objOwner string, objName string) bool {
 	if method == "POST" {
-		if strings.HasPrefix(urlPath, "/api/login") || urlPath == "/api/logout" || urlPath == "/api/signup" || urlPath == "/api/send-verification-code" {
+		if strings.HasPrefix(urlPath, "/api/login") || urlPath == "/api/logout" || urlPath == "/api/signup" || urlPath == "/api/send-verification-code" || urlPath == "/api/send-email" || urlPath == "/api/verify-captcha" {
 			return true
 		} else if urlPath == "/api/update-user" {
 			// Allow ordinary users to update their own information

@@ -14,19 +14,32 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Table} from "antd";
+import {Button, Table} from "antd";
 import moment from "moment";
 import * as Setting from "./Setting";
 import * as ProviderBackend from "./backend/ProviderBackend";
 import * as Provider from "./auth/Provider";
 import i18next from "i18next";
 import BaseListPage from "./BaseListPage";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
 
 class ProviderListPage extends BaseListPage {
+  constructor(props) {
+    super(props);
+  }
+
+  componentDidMount() {
+    super.componentDidMount();
+    this.setState({
+      owner: Setting.isAdminUser(this.props.account) ? "admin" : this.props.account.owner,
+    });
+  }
+
   newProvider() {
     const randomName = Setting.getRandomName();
+    const owner = Setting.isDefaultOrganizationSelected(this.props.account) ? this.state.owner : Setting.getRequestOrganization();
     return {
-      owner: "admin", // this.props.account.providername,
+      owner: owner,
       name: `provider_${randomName}`,
       createdTime: moment().format(),
       displayName: `New Provider - ${randomName}`,
@@ -46,26 +59,33 @@ class ProviderListPage extends BaseListPage {
     const newProvider = this.newProvider();
     ProviderBackend.addProvider(newProvider)
       .then((res) => {
-        this.props.history.push({pathname: `/providers/${newProvider.name}`, mode: "add"});
-      }
-      )
+        if (res.status === "ok") {
+          this.props.history.push({pathname: `/providers/${newProvider.owner}/${newProvider.name}`, mode: "add"});
+          Setting.showMessage("success", i18next.t("general:Successfully added"));
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to add")}: ${res.msg}`);
+        }
+      })
       .catch(error => {
-        Setting.showMessage("error", `Provider failed to add: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deleteProvider(i) {
     ProviderBackend.deleteProvider(this.state.data[i])
       .then((res) => {
-        Setting.showMessage("success", "Provider deleted successfully");
-        this.setState({
-          data: Setting.deleteRow(this.state.data, i),
-          pagination: {total: this.state.pagination.total - 1},
-        });
-      }
-      )
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully deleted"));
+          this.setState({
+            data: Setting.deleteRow(this.state.data, i),
+            pagination: {total: this.state.pagination.total - 1},
+          });
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
+      })
       .catch(error => {
-        Setting.showMessage("error", `Provider failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
@@ -81,10 +101,21 @@ class ProviderListPage extends BaseListPage {
         ...this.getColumnSearchProps("name"),
         render: (text, record, index) => {
           return (
-            <Link to={`/providers/${text}`}>
+            <Link to={`/providers/${record.owner}/${text}`}>
               {text}
             </Link>
           );
+        },
+      },
+      {
+        title: i18next.t("general:Organization"),
+        dataIndex: "owner",
+        key: "owner",
+        width: "150px",
+        sorter: true,
+        ...this.getColumnSearchProps("owner"),
+        render: (text, record, index) => {
+          return (text !== "admin") ? text : i18next.t("provider:admin (Shared)");
         },
       },
       {
@@ -116,6 +147,8 @@ class ProviderListPage extends BaseListPage {
           {text: "SMS", value: "SMS"},
           {text: "Storage", value: "Storage"},
           {text: "SAML", value: "SAML"},
+          {text: "Captcha", value: "Captcha"},
+          {text: "Payment", value: "Payment"},
         ],
         width: "110px",
         sorter: true,
@@ -134,6 +167,7 @@ class ProviderListPage extends BaseListPage {
           {text: "Storage", value: "Storage", children: Setting.getProviderTypeOptions("Storage").map((o) => {return {text: o.id, value: o.name};})},
           {text: "SAML", value: "SAML", children: Setting.getProviderTypeOptions("SAML").map((o) => {return {text: o.id, value: o.name};})},
           {text: "Captcha", value: "Captcha", children: Setting.getProviderTypeOptions("Captcha").map((o) => {return {text: o.id, value: o.name};})},
+          {text: "Payment", value: "Payment", children: Setting.getProviderTypeOptions("Payment").map((o) => {return {text: o.id, value: o.name};})},
         ],
         sorter: true,
         render: (text, record, index) => {
@@ -177,13 +211,13 @@ class ProviderListPage extends BaseListPage {
         render: (text, record, index) => {
           return (
             <div>
-              <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary" onClick={() => this.props.history.push(`/providers/${record.name}`)}>{i18next.t("general:Edit")}</Button>
-              <Popconfirm
-                title={`Sure to delete provider: ${record.name} ?`}
+              <Button disabled={!Setting.isAdminUser(this.props.account) && (record.owner !== this.props.account.owner)} style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary" onClick={() => this.props.history.push(`/providers/${record.owner}/${record.name}`)}>{i18next.t("general:Edit")}</Button>
+              <PopconfirmModal
+                title={i18next.t("general:Sure to delete") + `: ${record.name} ?`}
                 onConfirm={() => this.deleteProvider(index)}
+                disabled={!Setting.isAdminUser(this.props.account) && (record.owner !== this.props.account.owner)}
               >
-                <Button style={{marginBottom: "10px"}} type="danger">{i18next.t("general:Delete")}</Button>
-              </Popconfirm>
+              </PopconfirmModal>
             </div>
           );
         },
@@ -199,7 +233,7 @@ class ProviderListPage extends BaseListPage {
 
     return (
       <div>
-        <Table scroll={{x: "max-content"}} columns={columns} dataSource={providers} rowKey="name" size="middle" bordered pagination={paginationProps}
+        <Table scroll={{x: "max-content"}} columns={columns} dataSource={providers} rowKey={(record) => `${record.owner}/${record.name}`} size="middle" bordered pagination={paginationProps}
           title={() => (
             <div>
               {i18next.t("general:Providers")}&nbsp;&nbsp;&nbsp;&nbsp;
@@ -224,11 +258,14 @@ class ProviderListPage extends BaseListPage {
       value = params.type;
     }
     this.setState({loading: true});
-    ProviderBackend.getProviders("admin", params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+    (Setting.isDefaultOrganizationSelected(this.props.account) ? ProviderBackend.getGlobalProviders(params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+      : ProviderBackend.getProviders(Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder))
       .then((res) => {
+        this.setState({
+          loading: false,
+        });
         if (res.status === "ok") {
           this.setState({
-            loading: false,
             data: res.data,
             pagination: {
               ...params.pagination,
@@ -237,6 +274,14 @@ class ProviderListPage extends BaseListPage {
             searchText: params.searchText,
             searchedColumn: params.searchedColumn,
           });
+        } else {
+          if (Setting.isResponseDenied(res)) {
+            this.setState({
+              isAuthorized: false,
+            });
+          } else {
+            Setting.showMessage("error", res.msg);
+          }
         }
       });
   };

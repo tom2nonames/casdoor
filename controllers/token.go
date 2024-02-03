@@ -16,12 +16,21 @@ package controllers
 
 import (
 	"encoding/json"
-	"net/http"
+	"fmt"
 
-	"github.com/astaxie/beego/utils/pagination"
+	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
+
+type WechatMiniprogramBind struct {
+	ClientId    string `json:"client_id"`
+	WechatCode  string `json:"wechat_code"`
+	Phone       string `json:"phone"`
+	VerifyCode  string `json:"verify_code"`
+	CountryCode string `json:"country_code"`
+	//Organization string `json:"organization"`
+}
 
 // GetTokens
 // @Title GetTokens
@@ -40,13 +49,31 @@ func (c *ApiController) GetTokens() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+	organization := c.Input().Get("organization")
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetTokens(owner)
+		token, err := object.GetTokens(owner, organization)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = token
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetTokenCount(owner, field, value)))
-		tokens := object.GetPaginationTokens(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		count, err := object.GetTokenCount(owner, organization, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		tokens, err := object.GetPaginationTokens(owner, organization, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(tokens, paginator.Nums())
 	}
 }
@@ -55,13 +82,18 @@ func (c *ApiController) GetTokens() {
 // @Title GetToken
 // @Tag Token API
 // @Description get token
-// @Param   id     query    string  true        "The id of token"
+// @Param   id     query    string  true        "The id ( owner/name ) of token"
 // @Success 200 {object} object.Token The Response object
 // @router /get-token [get]
 func (c *ApiController) GetToken() {
 	id := c.Input().Get("id")
+	token, err := object.GetToken(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
-	c.Data["json"] = object.GetToken(id)
+	c.Data["json"] = token
 	c.ServeJSON()
 }
 
@@ -69,7 +101,7 @@ func (c *ApiController) GetToken() {
 // @Title UpdateToken
 // @Tag Token API
 // @Description update token
-// @Param   id     query    string  true        "The id of token"
+// @Param   id     query    string  true        "The id ( owner/name ) of token"
 // @Param   body    body   object.Token  true        "Details of the token"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-token [post]
@@ -129,7 +161,7 @@ func (c *ApiController) DeleteToken() {
 // @Title GetOAuthCode
 // @Tag Token API
 // @Description get OAuth code
-// @Param   user_id     query    string  true        "The id of user"
+// @Param   id     query    string  true        "The id ( owner/name ) of user"
 // @Param   client_id     query    string  true        "OAuth client id"
 // @Param   response_type     query    string  true        "OAuth response type"
 // @Param   redirect_uri     query    string  true        "OAuth redirect URI"
@@ -138,6 +170,7 @@ func (c *ApiController) DeleteToken() {
 // @Success 200 {object} object.TokenWrapper The Response object
 // @router /login/oauth/code [post]
 func (c *ApiController) GetOAuthCode() {
+	sessionID := c.Ctx.Input.CruSession.SessionID()
 	userId := c.Input().Get("user_id")
 	clientId := c.Input().Get("client_id")
 	responseType := c.Input().Get("response_type")
@@ -150,12 +183,13 @@ func (c *ApiController) GetOAuthCode() {
 	codeChallenge := c.Input().Get("code_challenge")
 
 	if challengeMethod != "S256" && challengeMethod != "null" && challengeMethod != "" {
-		c.ResponseError("Challenge method should be S256")
+		c.ResponseError(c.T("auth:Challenge method should be S256"))
 		return
 	}
 	host := c.Ctx.Request.Host
 
-	c.Data["json"] = object.GetOAuthCode(userId, clientId, responseType, redirectUri, scope, state, nonce, codeChallenge, host)
+	code, _ := object.GetOAuthCode(userId, clientId, responseType, redirectUri, scope, state, nonce, codeChallenge, host, c.GetAcceptLanguage(), sessionID)
+	c.Data["json"] = code
 	c.ServeJSON()
 }
 
@@ -172,7 +206,9 @@ func (c *ApiController) GetOAuthCode() {
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/access_token [post]
 func (c *ApiController) GetOAuthToken() {
+	sessionID := c.Ctx.Input.CruSession.SessionID()
 	grantType := c.Input().Get("grant_type")
+	refreshToken := c.Input().Get("refresh_token")
 	clientId := c.Input().Get("client_id")
 	clientSecret := c.Input().Get("client_secret")
 	code := c.Input().Get("code")
@@ -193,6 +229,7 @@ func (c *ApiController) GetOAuthToken() {
 			clientId = tokenRequest.ClientId
 			clientSecret = tokenRequest.ClientSecret
 			grantType = tokenRequest.GrantType
+			refreshToken = tokenRequest.RefreshToken
 			code = tokenRequest.Code
 			verifier = tokenRequest.Verifier
 			scope = tokenRequest.Scope
@@ -203,8 +240,13 @@ func (c *ApiController) GetOAuthToken() {
 		}
 	}
 	host := c.Ctx.Request.Host
+	oAuthtoken, err := object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, refreshToken, tag, avatar, c.GetAcceptLanguage(), sessionID)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
-	c.Data["json"] = object.GetOAuthToken(grantType, clientId, clientSecret, code, verifier, scope, username, password, host, tag, avatar)
+	c.Data["json"] = oAuthtoken
 	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }
@@ -223,6 +265,7 @@ func (c *ApiController) GetOAuthToken() {
 // @Success 401 {object} object.TokenError The Response object
 // @router /login/oauth/refresh_token [post]
 func (c *ApiController) RefreshToken() {
+	//sessionID := c.Ctx.Input.CruSession.SessionID()
 	grantType := c.Input().Get("grant_type")
 	refreshToken := c.Input().Get("refresh_token")
 	scope := c.Input().Get("scope")
@@ -242,30 +285,15 @@ func (c *ApiController) RefreshToken() {
 		}
 	}
 
-	c.Data["json"] = object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
-	c.SetTokenErrorHttpStatus()
-	c.ServeJSON()
-}
-
-// TokenLogout
-// @Title TokenLogout
-// @Tag Token API
-// @Description delete token by AccessToken
-// @Param   id_token_hint     query    string  true        "id_token_hint"
-// @Param   post_logout_redirect_uri    query    string  false      "post_logout_redirect_uri"
-// @Param   state     query    string  true        "state"
-// @Success 200 {object} controllers.Response The Response object
-// @router /login/oauth/logout [get]
-func (c *ApiController) TokenLogout() {
-	token := c.Input().Get("id_token_hint")
-	flag, application := object.DeleteTokenByAccessToken(token)
-	redirectUri := c.Input().Get("post_logout_redirect_uri")
-	state := c.Input().Get("state")
-	if application != nil && object.CheckRedirectUriValid(application, redirectUri) {
-		c.Ctx.Redirect(http.StatusFound, redirectUri+"?state="+state)
+	//refreshToken2, err := object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host, sessionID)
+	refreshToken2, err := object.RefreshToken(grantType, refreshToken, scope, clientId, clientSecret, host)
+	if err != nil {
+		c.ResponseError(err.Error())
 		return
 	}
-	c.Data["json"] = wrapActionResponse(flag)
+
+	c.Data["json"] = refreshToken2
+	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }
 
@@ -290,7 +318,7 @@ func (c *ApiController) IntrospectToken() {
 		clientId = c.Input().Get("client_id")
 		clientSecret = c.Input().Get("client_secret")
 		if clientId == "" || clientSecret == "" {
-			c.ResponseError("empty clientId or clientSecret")
+			c.ResponseError(c.T("token:Empty clientId or clientSecret"))
 			c.Data["json"] = &object.TokenError{
 				Error: object.InvalidRequest,
 			}
@@ -299,16 +327,26 @@ func (c *ApiController) IntrospectToken() {
 			return
 		}
 	}
-	application := object.GetApplicationByClientId(clientId)
+	application, err := object.GetApplicationByClientId(clientId)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if application == nil || application.ClientSecret != clientSecret {
-		c.ResponseError("invalid application or wrong clientSecret")
+		c.ResponseError(c.T("token:Invalid application or wrong clientSecret"))
 		c.Data["json"] = &object.TokenError{
 			Error: object.InvalidClient,
 		}
 		c.SetTokenErrorHttpStatus()
 		return
 	}
-	token := object.GetTokenByTokenAndApplication(tokenValue, application.Name)
+	token, err := object.GetTokenByTokenAndApplication(tokenValue, application.Name)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if token == nil {
 		c.Data["json"] = &object.IntrospectionResponse{Active: false}
 		c.ServeJSON()
@@ -336,7 +374,60 @@ func (c *ApiController) IntrospectToken() {
 		Sub:       jwtToken.Subject,
 		Aud:       jwtToken.Audience,
 		Iss:       jwtToken.Issuer,
-		Jti:       jwtToken.Id,
+		Jti:       jwtToken.ID,
 	}
+	c.ServeJSON()
+}
+
+func (c *ApiController) WechatMiniprogramPhoneBind() {
+	var param WechatMiniprogramBind
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &param)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	application, err := object.GetApplicationByClientId(param.ClientId)
+	if err != nil {
+		c.ResponseError(err.Error(), nil)
+		return
+	}
+
+	var user *object.User
+	if user, err = object.GetUserByPhone(application.Organization, param.Phone); err != nil {
+		c.ResponseError(err.Error(), nil)
+		return
+	}
+
+	var checkDest string
+	var ok bool
+	param.CountryCode = user.GetCountryCode(param.CountryCode)
+	if checkDest, ok = util.GetE164Number(param.Phone, param.CountryCode); !ok {
+		c.ResponseError(fmt.Sprintf(c.T("verification:Phone number is invalid in your region %s"), param.CountryCode))
+		return
+	}
+
+	checkResult := object.CheckSigninCode(user, checkDest, param.VerifyCode, c.GetAcceptLanguage())
+	if len(checkResult) != 0 {
+		c.ResponseError(fmt.Sprintf("%s - %s", "phone", checkResult))
+		return
+	}
+
+	// disable the verification code
+	err = object.DisableVerificationCode(checkDest)
+	if err != nil {
+		c.ResponseError(err.Error(), nil)
+		return
+	}
+
+	host := c.Ctx.Request.Host
+	oAuthtoken, err := object.GetOAuthToken("", application.ClientId, application.ClientSecret, param.WechatCode, "", "", user.Owner+"/"+user.Name, "", host, "", "miniprogram_bind_phone", user.Avatar, c.GetAcceptLanguage(), "")
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = oAuthtoken
+	c.SetTokenErrorHttpStatus()
 	c.ServeJSON()
 }

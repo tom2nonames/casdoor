@@ -14,21 +14,36 @@
 
 package captcha
 
+import "fmt"
+
 type CaptchaProvider interface {
 	VerifyCaptcha(token, clientSecret string) (bool, error)
 }
 
 func GetCaptchaProvider(captchaType string) CaptchaProvider {
-	if captchaType == "Default" {
+	switch captchaType {
+	case "Default":
 		return NewDefaultCaptchaProvider()
-	} else if captchaType == "reCAPTCHA" {
+	case "reCAPTCHA":
 		return NewReCaptchaProvider()
-	} else if captchaType == "hCaptcha" {
-		return NewHCaptchaProvider()
-	} else if captchaType == "Aliyun Captcha" {
+	case "Aliyun Captcha":
 		return NewAliyunCaptchaProvider()
-	} else if captchaType == "GEETEST" {
+	case "hCaptcha":
+		return NewHCaptchaProvider()
+	case "GEETEST":
 		return NewGEETESTCaptchaProvider()
+	case "Cloudflare Turnstile":
+		return NewCloudflareTurnstileProvider()
 	}
+
 	return nil
+}
+
+func VerifyCaptchaByCaptchaType(captchaType, token, clientSecret string) (bool, error) {
+	provider := GetCaptchaProvider(captchaType)
+	if provider == nil {
+		return false, fmt.Errorf("invalid captcha provider: %s", captchaType)
+	}
+
+	return provider.VerifyCaptcha(token, clientSecret)
 }

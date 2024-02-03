@@ -15,11 +15,15 @@
 package routers
 
 import (
+	"compress/gzip"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
-	"github.com/astaxie/beego/context"
+	"github.com/beego/beego/context"
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/util"
 )
@@ -27,10 +31,16 @@ import (
 var (
 	oldStaticBaseUrl = "https://cdn.casbin.org"
 	newStaticBaseUrl = conf.GetConfigString("staticBaseUrl")
+	enableGzip       = conf.GetConfigBool("enableGzip")
 )
 
 func StaticFilter(ctx *context.Context) {
 	urlPath := ctx.Request.URL.Path
+
+	if urlPath == "/.well-known/acme-challenge/filename" {
+		http.ServeContent(ctx.ResponseWriter, ctx.Request, "acme-challenge", time.Now(), strings.NewReader("content"))
+	}
+
 	if strings.HasPrefix(urlPath, "/api/") || strings.HasPrefix(urlPath, "/.well-known/") {
 		return
 	}
@@ -45,19 +55,25 @@ func StaticFilter(ctx *context.Context) {
 		path += urlPath
 	}
 
+	path2 := strings.TrimPrefix(path, "web/build/images/")
+	if util.FileExist(path2) {
+		makeGzipResponse(ctx.ResponseWriter, ctx.Request, path2)
+		return
+	}
+
 	if !util.FileExist(path) {
 		path = "web/build/index.html"
 	}
 
 	if oldStaticBaseUrl == newStaticBaseUrl {
-		http.ServeFile(ctx.ResponseWriter, ctx.Request, path)
+		makeGzipResponse(ctx.ResponseWriter, ctx.Request, path)
 	} else {
 		serveFileWithReplace(ctx.ResponseWriter, ctx.Request, path, oldStaticBaseUrl, newStaticBaseUrl)
 	}
 }
 
 func serveFileWithReplace(w http.ResponseWriter, r *http.Request, name string, old string, new string) {
-	f, err := os.Open(name)
+	f, err := os.Open(filepath.Clean(name))
 	if err != nil {
 		panic(err)
 	}
@@ -76,4 +92,25 @@ func serveFileWithReplace(w http.ResponseWriter, r *http.Request, name string, o
 	if err != nil {
 		panic(err)
 	}
+}
+
+type gzipResponseWriter struct {
+	io.Writer
+	http.ResponseWriter
+}
+
+func (w gzipResponseWriter) Write(b []byte) (int, error) {
+	return w.Writer.Write(b)
+}
+
+func makeGzipResponse(w http.ResponseWriter, r *http.Request, path string) {
+	if !enableGzip || !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+		http.ServeFile(w, r, path)
+		return
+	}
+	w.Header().Set("Content-Encoding", "gzip")
+	gz := gzip.NewWriter(w)
+	defer gz.Close()
+	gzw := gzipResponseWriter{Writer: gz, ResponseWriter: w}
+	http.ServeFile(gzw, r, path)
 }

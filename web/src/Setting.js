@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import {Tag, Tooltip, message} from "antd";
-import {QuestionCircleTwoTone} from "@ant-design/icons";
 import React from "react";
+import {Link} from "react-router-dom";
+import {Select, Tag, Tooltip, message, theme} from "antd";
+import {QuestionCircleTwoTone} from "@ant-design/icons";
 import {isMobile as isMobileDevice} from "react-device-detect";
 import "./i18n";
 import i18next from "i18next";
@@ -22,14 +23,59 @@ import copy from "copy-to-clipboard";
 import {authConfig} from "./auth/Auth";
 import {Helmet} from "react-helmet";
 import * as Conf from "./Conf";
+import * as phoneNumber from "libphonenumber-js";
+import moment from "moment";
+
+const {Option} = Select;
 
 export const ServerUrl = "";
 
 // export const StaticBaseUrl = "https://cdn.jsdelivr.net/gh/casbin/static";
 export const StaticBaseUrl = "https://cdn.casbin.org";
 
-// https://catamphetamine.gitlab.io/country-flag-icons/3x2/index.html
-export const CountryRegionData = getCountryRegionData();
+export const Countries = [{label: "English", key: "en", country: "US", alt: "English"},
+  {label: "Español", key: "es", country: "ES", alt: "Español"},
+  {label: "Français", key: "fr", country: "FR", alt: "Français"},
+  {label: "Deutsch", key: "de", country: "DE", alt: "Deutsch"},
+  {label: "中文", key: "zh", country: "CN", alt: "中文"},
+  {label: "Indonesia", key: "id", country: "ID", alt: "Indonesia"},
+  {label: "日本語", key: "ja", country: "JP", alt: "日本語"},
+  {label: "한국어", key: "ko", country: "KR", alt: "한국어"},
+  {label: "Русский", key: "ru", country: "RU", alt: "Русский"},
+  {label: "TiếngViệt", key: "vi", country: "VN", alt: "TiếngViệt"},
+  {label: "Português", key: "pt", country: "BR", alt: "Português"},
+];
+
+export function getThemeData(organization, application) {
+  if (application?.themeData?.isEnabled) {
+    return application.themeData;
+  } else if (organization?.themeData?.isEnabled) {
+    return organization.themeData;
+  } else {
+    return Conf.ThemeDefault;
+  }
+}
+
+export function getAlgorithm(themeAlgorithmNames) {
+  return themeAlgorithmNames.map((algorithmName) => {
+    if (algorithmName === "dark") {
+      return theme.darkAlgorithm;
+    }
+    if (algorithmName === "compact") {
+      return theme.compactAlgorithm;
+    }
+    return theme.defaultAlgorithm;
+  });
+}
+
+export function getAlgorithmNames(themeData) {
+  const algorithms = [themeData?.themeType !== "dark" ? "default" : "dark"];
+  if (themeData?.isCompact === true) {
+    algorithms.push("compact");
+  }
+
+  return algorithms;
+}
 
 export const OtherProviderInfo = {
   SMS: {
@@ -49,6 +95,18 @@ export const OtherProviderInfo = {
       logo: `${StaticBaseUrl}/img/social_huawei.png`,
       url: "https://www.huaweicloud.com/product/msgsms.html",
     },
+    "Twilio SMS": {
+      logo: `${StaticBaseUrl}/img/social_twilio.svg`,
+      url: "https://www.twilio.com/messaging",
+    },
+    "SmsBao SMS": {
+      logo: `${StaticBaseUrl}/img/social_smsbao.png`,
+      url: "https://www.smsbao.com/",
+    },
+    "SUBMAIL SMS": {
+      logo: `${StaticBaseUrl}/img/social_submail.svg`,
+      url: "https://www.mysubmail.com",
+    },
     "Mock SMS": {
       logo: `${StaticBaseUrl}/img/social_default.png`,
       url: "",
@@ -56,8 +114,16 @@ export const OtherProviderInfo = {
   },
   Email: {
     "Default": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
+      logo: `${StaticBaseUrl}/img/email_default.png`,
       url: "",
+    },
+    "SUBMAIL": {
+      logo: `${StaticBaseUrl}/img/social_submail.svg`,
+      url: "https://www.mysubmail.com",
+    },
+    "Mailtrap": {
+      logo: `${StaticBaseUrl}/img/email_mailtrap.png`,
+      url: "https://mailtrap.io",
     },
   },
   Storage: {
@@ -97,6 +163,10 @@ export const OtherProviderInfo = {
     },
   },
   Payment: {
+    "Dummy": {
+      logo: `${StaticBaseUrl}/img/payment_paypal.png`,
+      url: "",
+    },
     "Alipay": {
       logo: `${StaticBaseUrl}/img/payment_alipay.png`,
       url: "https://www.alipay.com/",
@@ -116,7 +186,7 @@ export const OtherProviderInfo = {
   },
   Captcha: {
     "Default": {
-      logo: `${StaticBaseUrl}/img/social_default.png`,
+      logo: `${StaticBaseUrl}/img/captcha_default.png`,
       url: "https://pkg.go.dev/github.com/dchest/captcha",
     },
     "reCAPTCHA": {
@@ -135,21 +205,62 @@ export const OtherProviderInfo = {
       logo: `${StaticBaseUrl}/img/social_geetest.png`,
       url: "https://www.geetest.com",
     },
+    "Cloudflare Turnstile": {
+      logo: `${StaticBaseUrl}/img/social_cloudflare.png`,
+      url: "https://www.cloudflare.com/products/turnstile/",
+    },
+  },
+  AI: {
+    "OpenAI API - GPT": {
+      logo: `${StaticBaseUrl}/img/social_openai.svg`,
+      url: "https://platform.openai.com",
+    },
   },
 };
 
-export function getCountryRegionData() {
-  let language = i18next.language;
-  if (language === null || language === "null") {
-    language = Conf.DefaultLanguage;
-  }
-
+export function initCountries() {
   const countries = require("i18n-iso-countries");
-  countries.registerLocale(require("i18n-iso-countries/langs/" + language + ".json"));
-  const data = countries.getNames(language, {select: "official"});
-  const result = [];
-  for (const i in data) {result.push({code: i, name: data[i]});}
-  return result;
+  countries.registerLocale(require("i18n-iso-countries/langs/" + getLanguage() + ".json"));
+  return countries;
+}
+
+export function getCountryCode(country) {
+  if (phoneNumber.isSupportedCountry(country)) {
+    return phoneNumber.getCountryCallingCode(country);
+  }
+  return "";
+}
+
+export function getCountryCodeData(countryCodes = phoneNumber.getCountries()) {
+  return countryCodes?.map((countryCode) => {
+    if (phoneNumber.isSupportedCountry(countryCode)) {
+      const name = initCountries().getName(countryCode, getLanguage());
+      return {
+        code: countryCode,
+        name: name || "",
+        phone: phoneNumber.getCountryCallingCode(countryCode),
+      };
+    }
+  }).filter(item => item.name !== "")
+    .sort((a, b) => a.phone - b.phone);
+}
+
+export function getCountryCodeOption(country) {
+  return (
+    <Option key={country.code} value={country.code} label={`+${country.phone}`} text={`${country.name}, ${country.code}, ${country.phone}`} >
+      <div style={{display: "flex", justifyContent: "space-between", marginRight: "10px"}}>
+        <div>
+          {getCountryImage(country)}
+          {`${country.name}`}
+        </div>
+        {`+${country.phone}`}
+      </div>
+    </Option>
+  );
+}
+
+export function getCountryImage(country) {
+  return <img src={`${StaticBaseUrl}/flag-icons/${country.code}.svg`} alt={country.name} height={20} style={{marginRight: 10}} />;
 }
 
 export function initServerUrl() {
@@ -188,6 +299,13 @@ export function isProviderVisible(providerItem) {
   return true;
 }
 
+export function isResponseDenied(data) {
+  if (data.msg === "Unauthorized operation" || data.msg === "未授权的操作") {
+    return true;
+  }
+  return false;
+}
+
 export function isProviderVisibleForSignUp(providerItem) {
   if (providerItem.canSignUp === false) {
     return false;
@@ -213,19 +331,19 @@ export function isSignupItemPrompted(signupItem) {
 }
 
 export function getAllPromptedProviderItems(application) {
-  return application.providers.filter(providerItem => isProviderPrompted(providerItem));
+  return application.providers?.filter(providerItem => isProviderPrompted(providerItem));
 }
 
 export function getAllPromptedSignupItems(application) {
-  return application.signupItems.filter(signupItem => isSignupItemPrompted(signupItem));
+  return application.signupItems?.filter(signupItem => isSignupItemPrompted(signupItem));
 }
 
 export function getSignupItem(application, itemName) {
   const signupItems = application.signupItems?.filter(signupItem => signupItem.name === itemName);
-  if (signupItems.length === 0) {
-    return null;
+  if (signupItems?.length > 0) {
+    return signupItems[0];
   }
-  return signupItems[0];
+  return null;
 }
 
 export function isValidPersonName(personName) {
@@ -237,8 +355,10 @@ export function isValidPersonName(personName) {
 }
 
 export function isValidIdCard(idCard) {
-  const idCardRegex = /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(10|11|12))(([0-2][1-9])|10|20|30|31)\d{3}[0-9X]$/;
-  return idCardRegex.test(idCard);
+  return idCard !== "";
+
+  // const idCardRegex = /^[1-9]\d{5}(18|19|20)\d{2}((0[1-9])|(10|11|12))(([0-2][1-9])|10|20|30|31)\d{3}[0-9X]$/;
+  // return idCardRegex.test(idCard);
 }
 
 export function isValidEmail(email) {
@@ -247,35 +367,41 @@ export function isValidEmail(email) {
   return emailRegex.test(email);
 }
 
-export function isValidPhone(phone) {
-  if (phone === "") {
-    return false;
+export function isValidPhone(phone, countryCode = "") {
+  if (countryCode !== "" && countryCode !== "CN") {
+    return phoneNumber.isValidPhoneNumber(phone, countryCode);
   }
 
   // https://learnku.com/articles/31543, `^s*$` filter empty email individually.
-  const phoneRegex = /^\s*$|^1(3\d|4[5-9]|5[0-35-9]|6[2567]|7[0-8]|8\d|9[0-35-9])\d{8}$/;
-  return phoneRegex.test(phone);
+  const phoneCnRegex = /^1(3\d|4[5-9]|5[0-35-9]|6[2567]|7[0-8]|8\d|9[0-35-9])\d{8}$/;
+  const phoneRegex = /[0-9]{4,15}$/;
+
+  return countryCode === "CN" ? phoneCnRegex.test(phone) : phoneRegex.test(phone);
 }
 
 export function isValidInvoiceTitle(invoiceTitle) {
-  if (invoiceTitle === "") {
-    return false;
-  }
+  return invoiceTitle !== "";
 
-  // https://blog.css8.cn/post/14210975.html
-  const invoiceTitleRegex = /^[()（）\u4e00-\u9fa5]{0,50}$/;
-  return invoiceTitleRegex.test(invoiceTitle);
+  // if (invoiceTitle === "") {
+  //   return false;
+  // }
+  //
+  // // https://blog.css8.cn/post/14210975.html
+  // const invoiceTitleRegex = /^[()（）\u4e00-\u9fa5]{0,50}$/;
+  // return invoiceTitleRegex.test(invoiceTitle);
 }
 
 export function isValidTaxId(taxId) {
-  // https://www.codetd.com/article/8592083
-  const regArr = [/^[\da-z]{10,15}$/i, /^\d{6}[\da-z]{10,12}$/i, /^[a-z]\d{6}[\da-z]{9,11}$/i, /^[a-z]{2}\d{6}[\da-z]{8,10}$/i, /^\d{14}[\dx][\da-z]{4,5}$/i, /^\d{17}[\dx][\da-z]{1,2}$/i, /^[a-z]\d{14}[\dx][\da-z]{3,4}$/i, /^[a-z]\d{17}[\dx][\da-z]{0,1}$/i, /^[\d]{6}[\da-z]{13,14}$/i];
-  for (let i = 0; i < regArr.length; i++) {
-    if (regArr[i].test(taxId)) {
-      return true;
-    }
-  }
-  return false;
+  return taxId !== "";
+
+  // // https://www.codetd.com/article/8592083
+  // const regArr = [/^[\da-z]{10,15}$/i, /^\d{6}[\da-z]{10,12}$/i, /^[a-z]\d{6}[\da-z]{9,11}$/i, /^[a-z]{2}\d{6}[\da-z]{8,10}$/i, /^\d{14}[\dx][\da-z]{4,5}$/i, /^\d{17}[\dx][\da-z]{1,2}$/i, /^[a-z]\d{14}[\dx][\da-z]{3,4}$/i, /^[a-z]\d{17}[\dx][\da-z]{0,1}$/i, /^[\d]{6}[\da-z]{13,14}$/i];
+  // for (let i = 0; i < regArr.length; i++) {
+  //   if (regArr[i].test(taxId)) {
+  //     return true;
+  //   }
+  // }
+  // return false;
 }
 
 export function isAffiliationPrompted(application) {
@@ -289,12 +415,12 @@ export function isAffiliationPrompted(application) {
 
 export function hasPromptPage(application) {
   const providerItems = getAllPromptedProviderItems(application);
-  if (providerItems.length !== 0) {
+  if (providerItems?.length > 0) {
     return true;
   }
 
   const signupItems = getAllPromptedSignupItems(application);
-  if (signupItems.length !== 0) {
+  if (signupItems?.length > 0) {
     return true;
   }
 
@@ -356,6 +482,26 @@ export function isPromptAnswered(user, application) {
   return true;
 }
 
+export const MfaRuleRequired = "Required";
+export const MfaRulePrompted = "Prompted";
+export const MfaRuleOptional = "Optional";
+
+export function isRequiredEnableMfa(user, organization) {
+  if (!user || !organization || !organization.mfaItems) {
+    return false;
+  }
+  return getMfaItemsByRules(user, organization, [MfaRuleRequired]).length > 0;
+}
+
+export function getMfaItemsByRules(user, organization, mfaRules = []) {
+  if (!user || !organization || !organization.mfaItems) {
+    return [];
+  }
+
+  return organization.mfaItems.filter((mfaItem) => mfaRules.includes(mfaItem.rule))
+    .filter((mfaItem) => user.multiFactorAuths.some((mfa) => mfa.mfaType === mfaItem.name && !mfa.enabled));
+}
+
 export function parseObject(s) {
   try {
     return eval("(" + s + ")");
@@ -406,9 +552,7 @@ export function goToLinkSoft(ths, link) {
 }
 
 export function showMessage(type, text) {
-  if (type === "") {
-    return;
-  } else if (type === "success") {
+  if (type === "success") {
     message.success(text);
   } else if (type === "error") {
     message.error(text);
@@ -435,12 +579,8 @@ export function deepCopy(obj) {
   return Object.assign({}, obj);
 }
 
-export function addRow(array, row) {
-  return [...array, row];
-}
-
-export function prependRow(array, row) {
-  return [row, ...array];
+export function addRow(array, row, position = "end") {
+  return position === "end" ? [...array, row] : [row, ...array];
 }
 
 export function deleteRow(array, i) {
@@ -477,9 +617,8 @@ export function getFormattedDate(date) {
     return null;
   }
 
-  date = date.replace("T", " ");
-  date = date.replace("+08:00", " ");
-  return date;
+  const m = moment(date).local();
+  return m.format("YYYY-MM-DD HH:mm:ss");
 }
 
 export function getFormattedDateShort(date) {
@@ -488,6 +627,22 @@ export function getFormattedDateShort(date) {
 
 export function getShortName(s) {
   return s.split("/").slice(-1)[0];
+}
+
+export function getNameAtLeast(s) {
+  s = getShortName(s);
+  if (s.length >= 6) {
+    return s;
+  }
+
+  return (
+    <React.Fragment>
+      &nbsp;
+      {s}
+      &nbsp;
+      &nbsp;
+    </React.Fragment>
+  );
 }
 
 export function getShortText(s, maxLength = 35) {
@@ -532,44 +687,35 @@ export function getAvatarColor(s) {
   return colorList[hash % 4];
 }
 
+export function getLanguageText(text) {
+  if (!text.includes("|")) {
+    return text;
+  }
+
+  let res;
+  const tokens = text.split("|");
+  if (getLanguage() !== "zh") {
+    res = trim(tokens[0], "");
+  } else {
+    res = trim(tokens[1], "");
+  }
+  return res;
+}
+
 export function getLanguage() {
-  return i18next.language;
+  return (i18next.language !== undefined && i18next.language !== null && i18next.language !== "" && i18next.language !== "null") ? i18next.language : Conf.DefaultLanguage;
 }
 
 export function setLanguage(language) {
   localStorage.setItem("language", language);
-  changeMomentLanguage(language);
   i18next.changeLanguage(language);
 }
 
-export function changeLanguage(language) {
-  localStorage.setItem("language", language);
-  changeMomentLanguage(language);
-  i18next.changeLanguage(language);
-  window.location.reload(true);
-}
-
-export function changeMomentLanguage(language) {
-  // if (language === "zh") {
-  //   moment.locale("zh", {
-  //     relativeTime: {
-  //       future: "%s内",
-  //       past: "%s前",
-  //       s: "几秒",
-  //       ss: "%d秒",
-  //       m: "1分钟",
-  //       mm: "%d分钟",
-  //       h: "1小时",
-  //       hh: "%d小时",
-  //       d: "1天",
-  //       dd: "%d天",
-  //       M: "1个月",
-  //       MM: "%d个月",
-  //       y: "1年",
-  //       yy: "%d年",
-  //     },
-  //   });
-  // }
+export function getAcceptLanguage() {
+  if (i18next.language === null || i18next.language === "") {
+    return "en;q=0.9,en;q=0.8";
+  }
+  return i18next.language + ";q=0.9,en;q=0.8";
 }
 
 export function getClickable(text) {
@@ -636,6 +782,55 @@ export function getProviderTypeOptions(category) {
         {id: "Bilibili", name: "Bilibili"},
         {id: "Okta", name: "Okta"},
         {id: "Douyin", name: "Douyin"},
+        {id: "Line", name: "Line"},
+        {id: "Amazon", name: "Amazon"},
+        {id: "Auth0", name: "Auth0"},
+        {id: "BattleNet", name: "Battle.net"},
+        {id: "Bitbucket", name: "Bitbucket"},
+        {id: "Box", name: "Box"},
+        {id: "CloudFoundry", name: "Cloud Foundry"},
+        {id: "Dailymotion", name: "Dailymotion"},
+        {id: "Deezer", name: "Deezer"},
+        {id: "DigitalOcean", name: "DigitalOcean"},
+        {id: "Discord", name: "Discord"},
+        {id: "Dropbox", name: "Dropbox"},
+        {id: "EveOnline", name: "Eve Online"},
+        {id: "Fitbit", name: "Fitbit"},
+        {id: "Gitea", name: "Gitea"},
+        {id: "Heroku", name: "Heroku"},
+        {id: "InfluxCloud", name: "InfluxCloud"},
+        {id: "Instagram", name: "Instagram"},
+        {id: "Intercom", name: "Intercom"},
+        {id: "Kakao", name: "Kakao"},
+        {id: "Lastfm", name: "Lastfm"},
+        {id: "Mailru", name: "Mailru"},
+        {id: "Meetup", name: "Meetup"},
+        {id: "MicrosoftOnline", name: "MicrosoftOnline"},
+        {id: "Naver", name: "Naver"},
+        {id: "Nextcloud", name: "Nextcloud"},
+        {id: "OneDrive", name: "OneDrive"},
+        {id: "Oura", name: "Oura"},
+        {id: "Patreon", name: "Patreon"},
+        {id: "PayPal", name: "PayPal"},
+        {id: "SalesForce", name: "SalesForce"},
+        {id: "Shopify", name: "Shopify"},
+        {id: "Soundcloud", name: "Soundcloud"},
+        {id: "Spotify", name: "Spotify"},
+        {id: "Strava", name: "Strava"},
+        {id: "Stripe", name: "Stripe"},
+        {id: "TikTok", name: "TikTok"},
+        {id: "Tumblr", name: "Tumblr"},
+        {id: "Twitch", name: "Twitch"},
+        {id: "Twitter", name: "Twitter"},
+        {id: "Typetalk", name: "Typetalk"},
+        {id: "Uber", name: "Uber"},
+        {id: "VK", name: "VK"},
+        {id: "Wepay", name: "Wepay"},
+        {id: "Xero", name: "Xero"},
+        {id: "Yahoo", name: "Yahoo"},
+        {id: "Yammer", name: "Yammer"},
+        {id: "Yandex", name: "Yandex"},
+        {id: "Zoom", name: "Zoom"},
         {id: "Custom", name: "Custom"},
       ]
     );
@@ -644,6 +839,7 @@ export function getProviderTypeOptions(category) {
       [
         {id: "Default", name: "Default"},
         {id: "SUBMAIL", name: "SUBMAIL"},
+        {id: "Mailtrap", name: "Mailtrap"},
       ]
     );
   } else if (category === "SMS") {
@@ -653,6 +849,9 @@ export function getProviderTypeOptions(category) {
         {id: "Tencent Cloud SMS", name: "Tencent Cloud SMS"},
         {id: "Volc Engine SMS", name: "Volc Engine SMS"},
         {id: "Huawei Cloud SMS", name: "Huawei Cloud SMS"},
+        {id: "Twilio SMS", name: "Twilio SMS"},
+        {id: "SmsBao SMS", name: "SmsBao SMS"},
+        {id: "SUBMAIL SMS", name: "SUBMAIL SMS"},
       ]
     );
   } else if (category === "Storage") {
@@ -673,6 +872,7 @@ export function getProviderTypeOptions(category) {
     ]);
   } else if (category === "Payment") {
     return ([
+      {id: "Dummy", name: "Dummy"},
       {id: "Alipay", name: "Alipay"},
       {id: "WeChat Pay", name: "WeChat Pay"},
       {id: "PayPal", name: "PayPal"},
@@ -685,25 +885,12 @@ export function getProviderTypeOptions(category) {
       {id: "hCaptcha", name: "hCaptcha"},
       {id: "Aliyun Captcha", name: "Aliyun Captcha"},
       {id: "GEETEST", name: "GEETEST"},
+      {id: "Cloudflare Turnstile", name: "Cloudflare Turnstile"},
     ]);
-  } else {
-    return [];
-  }
-}
-
-export function getProviderSubTypeOptions(type) {
-  if (type === "WeCom" || type === "Infoflow") {
-    return (
-      [
-        {id: "Internal", name: "Internal"},
-        {id: "Third-party", name: "Third-party"},
-      ]
-    );
-  } else if (type === "Aliyun Captcha") {
-    return [
-      {id: "nc", name: "Sliding Validation"},
-      {id: "ic", name: "Intelligent Validation"},
-    ];
+  } else if (category === "AI") {
+    return ([
+      {id: "OpenAI API - GPT", name: "OpenAI API - GPT"},
+    ]);
   } else {
     return [];
   }
@@ -717,74 +904,110 @@ export function renderLogo(application) {
   if (application.homepageUrl !== "") {
     return (
       <a target="_blank" rel="noreferrer" href={application.homepageUrl}>
-        <img width={250} src={application.logo} alt={application.displayName} style={{marginBottom: "10px"}} />
+        <img className="panel-logo" width={250} src={application.logo} alt={application.displayName} />
       </a>
     );
   } else {
     return (
-      <img width={250} src={application.logo} alt={application.displayName} style={{marginBottom: "10px"}} />
+      <img className="panel-logo" width={250} src={application.logo} alt={application.displayName} />
     );
   }
 }
 
-export function goToLogin(ths, application) {
+export function getLoginLink(application) {
+  let url;
   if (application === null) {
-    return;
-  }
-
-  if (!application.enablePassword && window.location.pathname.includes("/auto-signup/oauth/authorize")) {
-    const link = window.location.href.replace("/auto-signup/oauth/authorize", "/login/oauth/authorize");
-    goToLink(link);
-    return;
-  }
-
-  if (authConfig.appName === application.name) {
-    goToLinkSoft(ths, "/login");
+    url = null;
+  } else if (!application.enablePassword && window.location.pathname.includes("/auto-signup/oauth/authorize")) {
+    url = window.location.href.replace("/auto-signup/oauth/authorize", "/login/oauth/authorize");
+  } else if (authConfig.appName === application.name) {
+    url = "/login";
+  } else if (application.signinUrl === "") {
+    url = trim(application.homepageUrl, "/") + "/login";
   } else {
-    if (application.signinUrl === "") {
-      goToLink(`${application.homepageUrl}/login`);
-    } else {
-      goToLink(application.signinUrl);
-    }
+    url = application.signinUrl;
+  }
+  return url;
+}
+
+export function renderLoginLink(application, text) {
+  const url = getLoginLink(application);
+  return renderLink(url, text, null);
+}
+
+export function redirectToLoginPage(application, history) {
+  const loginLink = getLoginLink(application);
+  if (loginLink.startsWith("http://") || loginLink.startsWith("https://")) {
+    goToLink(loginLink);
+  } else {
+    history.push(loginLink);
   }
 }
 
-export function goToSignup(ths, application) {
+function renderLink(url, text, onClick) {
+  if (url === null) {
+    return null;
+  }
+
+  if (url.startsWith("/")) {
+    return (
+      <Link style={{float: "right"}} to={url} onClick={() => {
+        if (onClick !== null) {
+          onClick();
+        }
+      }}>{text}</Link>
+    );
+  } else if (url.startsWith("http")) {
+    return (
+      <a target="_blank" rel="noopener noreferrer" style={{float: "right"}} href={url} onClick={() => {
+        if (onClick !== null) {
+          onClick();
+        }
+      }}>{text}</a>
+    );
+  } else {
+    return null;
+  }
+}
+
+export function renderSignupLink(application, text) {
+  let url;
   if (application === null) {
-    return;
-  }
-
-  if (!application.enablePassword && window.location.pathname.includes("/login/oauth/authorize")) {
-    const link = window.location.href.replace("/login/oauth/authorize", "/auto-signup/oauth/authorize");
-    goToLink(link);
-    return;
-  }
-
-  if (authConfig.appName === application.name) {
-    goToLinkSoft(ths, "/signup");
+    url = null;
+  } else if (!application.enablePassword && window.location.pathname.includes("/login/oauth/authorize")) {
+    url = window.location.href.replace("/login/oauth/authorize", "/auto-signup/oauth/authorize");
+  } else if (authConfig.appName === application.name) {
+    url = "/signup";
   } else {
     if (application.signupUrl === "") {
-      goToLinkSoft(ths, `/signup/${application.name}`);
+      url = `/signup/${application.name}`;
     } else {
-      goToLink(application.signupUrl);
+      url = application.signupUrl;
     }
   }
+
+  const storeSigninUrl = () => {
+    sessionStorage.setItem("signinUrl", window.location.href);
+  };
+
+  return renderLink(url, text, storeSigninUrl);
 }
 
-export function goToForget(ths, application) {
+export function renderForgetLink(application, text) {
+  let url;
   if (application === null) {
-    return;
-  }
-
-  if (authConfig.appName === application.name) {
-    goToLinkSoft(ths, "/forget");
+    url = null;
+  } else if (authConfig.appName === application.name) {
+    url = "/forget";
   } else {
     if (application.forgetUrl === "") {
-      goToLinkSoft(ths, `/forget/${application.name}`);
+      url = `/forget/${application.name}`;
     } else {
-      goToLink(application.forgetUrl);
+      url = application.forgetUrl;
     }
   }
+
+  return renderLink(url, text, null);
 }
 
 export function renderHelmet(application) {
@@ -809,6 +1032,23 @@ export function getLabel(text, tooltip) {
       </Tooltip>
     </React.Fragment>
   );
+}
+
+export function getItem(label, key, icon, children, type) {
+  return {
+    key,
+    icon,
+    children,
+    label,
+    type,
+  };
+}
+
+export function getOption(label, value) {
+  return {
+    label,
+    value,
+  };
 }
 
 function repeat(str, len) {
@@ -843,13 +1083,17 @@ export function getMaskedEmail(email) {
   return `${username}@${domainTokens.join(".")}`;
 }
 
+export function IsEmail(s) {
+  return s.includes("@");
+}
+
 export function getArrayItem(array, key, value) {
   const res = array.filter(item => item[key] === value)[0];
   return res;
 }
 
 export function getDeduplicatedArray(array, filterArray, key) {
-  const res = array.filter(item => filterArray.filter(filterItem => filterItem[key] === item[key]).length === 0);
+  const res = array.filter(item => !filterArray.some(tableItem => tableItem[key] === item[key]));
   return res;
 }
 
@@ -866,18 +1110,28 @@ export function getTagColor(s) {
   return "processing";
 }
 
-export function getTags(tags) {
+export function getTags(tags, urlPrefix = null) {
   const res = [];
   if (!tags) {
     return res;
   }
 
   tags.forEach((tag, i) => {
-    res.push(
-      <Tag color={getTagColor(tag)}>
-        {tag}
-      </Tag>
-    );
+    if (urlPrefix === null) {
+      res.push(
+        <Tag color={getTagColor(tag)}>
+          {tag}
+        </Tag>
+      );
+    } else {
+      res.push(
+        <Link to={`/${urlPrefix}/${tag}`}>
+          <Tag color={getTagColor(tag)}>
+            {tag}
+          </Tag>
+        </Link>
+      );
+    }
   });
   return res;
 }
@@ -931,93 +1185,26 @@ export function inIframe() {
   }
 }
 
-export function getSyncerTableColumns(syncer) {
-  switch (syncer.type) {
-  case "Keycloak":
-    return [
-      {
-        "name": "ID",
-        "type": "string",
-        "casdoorName": "Id",
-        "isHashed": true,
-        "values": [
+export function getOrganization() {
+  const organization = localStorage.getItem("organization");
+  return organization !== null ? organization : "All";
+}
 
-        ],
-      },
-      {
-        "name": "USERNAME",
-        "type": "string",
-        "casdoorName": "Name",
-        "isHashed": true,
-        "values": [
+export function setOrganization(organization) {
+  localStorage.setItem("organization", organization);
+  window.dispatchEvent(new Event("storageOrganizationChanged"));
+}
 
-        ],
-      },
-      {
-        "name": "LAST_NAME+FIRST_NAME",
-        "type": "string",
-        "casdoorName": "DisplayName",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "EMAIL",
-        "type": "string",
-        "casdoorName": "Email",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "EMAIL_VERIFIED",
-        "type": "boolean",
-        "casdoorName": "EmailVerified",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "FIRST_NAME",
-        "type": "string",
-        "casdoorName": "FirstName",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "LAST_NAME",
-        "type": "string",
-        "casdoorName": "LastName",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "CREATED_TIMESTAMP",
-        "type": "string",
-        "casdoorName": "CreatedTime",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-      {
-        "name": "ENABLED",
-        "type": "boolean",
-        "casdoorName": "IsForbidden",
-        "isHashed": true,
-        "values": [
-
-        ],
-      },
-    ];
-  default:
-    return [];
+export function getRequestOrganization(account) {
+  if (isAdminUser(account)) {
+    return getOrganization() === "All" ? account.owner : getOrganization();
   }
+  return account.owner;
+}
+
+export function isDefaultOrganizationSelected(account) {
+  if (isAdminUser(account)) {
+    return getOrganization() === "All";
+  }
+  return false;
 }

@@ -16,6 +16,7 @@ package object
 
 import (
 	"fmt"
+	"github.com/casdoor/casdoor/util"
 	"time"
 )
 
@@ -37,7 +38,7 @@ func (syncer *Syncer) syncUsers() {
 
 	var affiliationMap map[int]string
 	if syncer.AffiliationTable != "" {
-		_, affiliationMap = syncer.getAffiliationMap()
+		_, affiliationMap, err = syncer.getAffiliationMap()
 	}
 
 	newUsers := []*User{}
@@ -63,9 +64,11 @@ func (syncer *Syncer) syncUsers() {
 				}
 			} else {
 				if user.PreHash == oHash {
-					updatedOUser := syncer.createOriginalUserFromUser(user)
-					syncer.updateUser(updatedOUser)
-					fmt.Printf("Update from user to oUser: %v\n", updatedOUser)
+					if !syncer.IsReadOnly {
+						updatedOUser := syncer.createOriginalUserFromUser(user)
+						syncer.updateUser(updatedOUser)
+						fmt.Printf("Update from user to oUser: %v\n", updatedOUser)
+					}
 
 					// update preHash
 					user.PreHash = user.Hash
@@ -86,14 +89,42 @@ func (syncer *Syncer) syncUsers() {
 			}
 		}
 	}
-	AddUsersInBatch(newUsers)
+	_, err = AddUsersInBatch(newUsers)
+	if err != nil {
+		panic(err)
+	}
 
-	for _, user := range users {
-		id := user.Id
-		if _, ok := oUserMap[id]; !ok {
-			newOUser := syncer.createOriginalUserFromUser(user)
-			syncer.addUser(newOUser)
-			fmt.Printf("New oUser: %v\n", newOUser)
+	for _, user := range newUsers {
+		record := &Record{
+			Name:         util.GenerateId(),
+			CreatedTime:  util.GetCurrentTime(),
+			ClientIp:     "127.0.0.1",
+			User:         user.Name,
+			Method:       "POST",
+			RequestUri:   "/api/add-user",
+			Action:       "add-user",
+			Object:       "",
+			IsTriggered:  false,
+			Organization: user.Owner,
+		}
+
+		if err = SendWebhooks(record); err != nil {
+			fmt.Printf(" SendWebhooks Error: %v\n", err)
+		}
+
+	}
+
+	if !syncer.IsReadOnly {
+		for _, user := range users {
+			id := user.Id
+			if _, ok := oUserMap[id]; !ok {
+				newOUser := syncer.createOriginalUserFromUser(user)
+				_, err = syncer.addUser(newOUser)
+				if err != nil {
+					panic(err)
+				}
+				fmt.Printf("New oUser: %v\n", newOUser)
+			}
 		}
 	}
 }

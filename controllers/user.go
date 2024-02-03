@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/astaxie/beego/utils/pagination"
+	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -37,14 +37,37 @@ func (c *ApiController) GetGlobalUsers() {
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetMaskedUsers(object.GetGlobalUsers())
+		maskedUsers, err := object.GetMaskedUsers(object.GetGlobalUsers())
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = maskedUsers
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetGlobalUserCount(field, value)))
-		users := object.GetPaginationGlobalUsers(paginator.Offset(), limit, field, value, sortField, sortOrder)
-		users = object.GetMaskedUsers(users)
+		count, err := object.GetGlobalUserCount(field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		users, err := object.GetPaginationGlobalUsers(paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		users, err = object.GetMaskedUsers(users)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(users, paginator.Nums())
 	}
 }
@@ -58,20 +81,54 @@ func (c *ApiController) GetGlobalUsers() {
 // @router /get-users [get]
 func (c *ApiController) GetUsers() {
 	owner := c.Input().Get("owner")
+	groupName := c.Input().Get("groupName")
 	limit := c.Input().Get("pageSize")
 	page := c.Input().Get("p")
 	field := c.Input().Get("field")
 	value := c.Input().Get("value")
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
+
 	if limit == "" || page == "" {
-		c.Data["json"] = object.GetMaskedUsers(object.GetUsers(owner))
+		if groupName != "" {
+			maskedUsers, err := object.GetMaskedUsers(object.GetGroupUsers(groupName))
+			if err != nil {
+				c.ResponseError(err.Error())
+				return
+			}
+			c.ResponseOk(maskedUsers)
+			return
+		}
+
+		maskedUsers, err := object.GetMaskedUsers(object.GetUsers(owner))
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = maskedUsers
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetUserCount(owner, field, value)))
-		users := object.GetPaginationUsers(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
-		users = object.GetMaskedUsers(users)
+		count, err := object.GetUserCount(owner, field, value, groupName)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		users, err := object.GetPaginationUsers(owner, paginator.Offset(), limit, field, value, sortField, sortOrder, groupName)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		users, err = object.GetMaskedUsers(users)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
 		c.ResponseOk(users, paginator.Nums())
 	}
 }
@@ -80,10 +137,11 @@ func (c *ApiController) GetUsers() {
 // @Title GetUser
 // @Tag User API
 // @Description get user
-// @Param   id     query    string  true         "The id of the user"
+// @Param   id     query    string  false        "The id ( owner/name ) of the user"
 // @Param   owner  query    string  false        "The owner of the user"
 // @Param   email  query    string  false 	     "The email of the user"
 // @Param   phone  query    string  false 	     "The phone of the user"
+// @Param   userId query    string  false 	     "The userId of the user"
 // @Success 200 {object} object.User The Response object
 // @router /get-user [get]
 func (c *ApiController) GetUser() {
@@ -91,16 +149,32 @@ func (c *ApiController) GetUser() {
 	email := c.Input().Get("email")
 	phone := c.Input().Get("phone")
 	userId := c.Input().Get("userId")
-
 	owner := c.Input().Get("owner")
-	if owner == "" {
-		owner, _ = util.GetOwnerAndNameFromId(id)
+	var err error
+	var userFromUserId *object.User
+	if userId != "" && owner != "" {
+		userFromUserId, err = object.GetUserByUserId(owner, userId)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		id = util.GetId(userFromUserId.Owner, userFromUserId.Name)
 	}
 
-	organization := object.GetOrganization(fmt.Sprintf("%s/%s", "admin", owner))
+	if owner == "" {
+		owner = util.GetOwnerFromId(id)
+	}
+
+	organization, err := object.GetOrganization(util.GetId("admin", owner))
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if !organization.IsProfilePublic {
 		requestUserId := c.GetSessionUsername()
-		hasPermission, err := object.CheckUserPermission(requestUserId, id, owner, false)
+		hasPermission, err := object.CheckUserPermission(requestUserId, id, false, c.GetAcceptLanguage())
 		if !hasPermission {
 			c.ResponseError(err.Error())
 			return
@@ -110,18 +184,34 @@ func (c *ApiController) GetUser() {
 	var user *object.User
 	switch {
 	case email != "":
-		user = object.GetUserByEmail(owner, email)
+		user, err = object.GetUserByEmail(owner, email)
 	case phone != "":
-		user = object.GetUserByPhone(owner, phone)
+		user, err = object.GetUserByPhone(owner, phone)
 	case userId != "":
-		user = object.GetUserByUserId(owner, userId)
+		user = userFromUserId
 	default:
-		user = object.GetUser(id)
+		user, err = object.GetUser(id)
 	}
 
-	object.ExtendUserWithRolesAndPermissions(user)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
-	c.Data["json"] = object.GetMaskedUser(user)
+	user.MultiFactorAuths = object.GetAllMfaProps(user, true)
+	err = object.ExtendUserWithRolesAndPermissions(user)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	maskedUser, err := object.GetMaskedUser(user)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = maskedUser
 	c.ServeJSON()
 }
 
@@ -129,17 +219,13 @@ func (c *ApiController) GetUser() {
 // @Title UpdateUser
 // @Tag User API
 // @Description update user
-// @Param   id     query    string  true        "The id of the user"
+// @Param   id     query    string  true        "The id ( owner/name ) of the user"
 // @Param   body    body   object.User  true        "The details of the user"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-user [post]
 func (c *ApiController) UpdateUser() {
 	id := c.Input().Get("id")
 	columnsStr := c.Input().Get("columns")
-
-	if id == "" {
-		id = c.GetSessionUsername()
-	}
 
 	var user object.User
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &user)
@@ -148,8 +234,37 @@ func (c *ApiController) UpdateUser() {
 		return
 	}
 
-	if user.DisplayName == "" {
-		c.ResponseError("Display name cannot be empty")
+	if id == "" {
+		id = c.GetSessionUsername()
+		if id == "" {
+			c.ResponseError(c.T("general:Missing parameter"))
+			return
+		}
+	}
+	oldUser, err := object.GetUser(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	if oldUser == nil {
+		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), id))
+		return
+	}
+
+	if oldUser.Owner == "built-in" && oldUser.Name == "admin" && (user.Owner != "built-in" || user.Name != "admin") {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return
+	}
+
+	if msg := object.CheckUpdateUser(oldUser, &user, c.GetAcceptLanguage()); msg != "" {
+		c.ResponseError(msg)
+		return
+	}
+
+	isAdmin := c.IsAdmin()
+	if pass, err := object.CheckPermissionForUpdateUser(oldUser, &user, isAdmin, c.GetAcceptLanguage()); !pass {
+		c.ResponseError(err)
 		return
 	}
 
@@ -158,10 +273,18 @@ func (c *ApiController) UpdateUser() {
 		columns = strings.Split(columnsStr, ",")
 	}
 
-	isGlobalAdmin := c.IsGlobalAdmin()
-	affected := object.UpdateUser(id, &user, columns, isGlobalAdmin)
+	affected, err := object.UpdateUser(id, &user, columns, isAdmin)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if affected {
-		object.UpdateUserToOriginalDatabase(&user)
+		err = object.UpdateUserToOriginalDatabase(&user)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
 	}
 
 	c.Data["json"] = wrapActionResponse(affected)
@@ -180,6 +303,23 @@ func (c *ApiController) AddUser() {
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &user)
 	if err != nil {
 		c.ResponseError(err.Error())
+		return
+	}
+
+	count, err := object.GetUserCount("", "", "", "")
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	if err := checkQuotaForUser(int(count)); err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	msg := object.CheckUsername(user.Name, c.GetAcceptLanguage())
+	if msg != "" {
+		c.ResponseError(msg)
 		return
 	}
 
@@ -202,6 +342,11 @@ func (c *ApiController) DeleteUser() {
 		return
 	}
 
+	if user.Owner == "built-in" && user.Name == "admin" {
+		c.ResponseError(c.T("auth:Unauthorized operation"))
+		return
+	}
+
 	c.Data["json"] = wrapActionResponse(object.DeleteUser(&user))
 	c.ServeJSON()
 }
@@ -213,24 +358,25 @@ func (c *ApiController) DeleteUser() {
 // @Param   username    formData   string  true        "The username of the user"
 // @Param   organization    formData   string  true        "The organization of the user"
 // @Success 200 {object} controllers.Response The Response object
-// @router /get-email-and-phone [post]
+// @router /get-email-and-phone [get]
 func (c *ApiController) GetEmailAndPhone() {
-	var form RequestForm
-	err := json.Unmarshal(c.Ctx.Input.RequestBody, &form)
+	organization := c.Ctx.Request.Form.Get("organization")
+	username := c.Ctx.Request.Form.Get("username")
+
+	user, err := object.GetUserByFields(organization, username)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	user := object.GetUserByFields(form.Organization, form.Username)
 	if user == nil {
-		c.ResponseError(fmt.Sprintf("The user: %s/%s doesn't exist", form.Organization, form.Username))
+		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), util.GetId(organization, username)))
 		return
 	}
 
 	respUser := object.User{Name: user.Name}
 	var contentType string
-	switch form.Username {
+	switch username {
 	case user.Email:
 		contentType = "email"
 		respUser.Email = user.Email
@@ -261,40 +407,66 @@ func (c *ApiController) SetPassword() {
 	userName := c.Ctx.Request.Form.Get("userName")
 	oldPassword := c.Ctx.Request.Form.Get("oldPassword")
 	newPassword := c.Ctx.Request.Form.Get("newPassword")
+	code := c.Ctx.Request.Form.Get("code")
+
+	//if userOwner == "built-in" && userName == "admin" {
+	//	c.ResponseError(c.T("auth:Unauthorized operation"))
+	//	return
+	//}
+
+	if strings.Contains(newPassword, " ") {
+		c.ResponseError(c.T("user:New password cannot contain blank space."))
+		return
+	}
+
+	userId := util.GetId(userOwner, userName)
 
 	requestUserId := c.GetSessionUsername()
-	userId := fmt.Sprintf("%s/%s", userOwner, userName)
+	if requestUserId == "" && code == "" {
+		c.ResponseError(c.T("general:Please login first"), "Please login first")
+		return
+	} else if code == "" {
+		hasPermission, err := object.CheckUserPermission(requestUserId, userId, true, c.GetAcceptLanguage())
+		if !hasPermission {
+			c.ResponseError(err.Error())
+			return
+		}
+	} else {
+		if code != c.GetSession("verifiedCode") {
+			c.ResponseError(c.T("general:Missing parameter"))
+			return
+		}
+		c.SetSession("verifiedCode", "")
+	}
 
-	hasPermission, err := object.CheckUserPermission(requestUserId, userId, userOwner, true)
-	if !hasPermission {
+	targetUser, err := object.GetUser(userId)
+	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	targetUser := object.GetUser(userId)
-
 	if oldPassword != "" {
-		msg := object.CheckPassword(targetUser, oldPassword)
+		msg := object.CheckPassword(targetUser, oldPassword, c.GetAcceptLanguage())
 		if msg != "" {
 			c.ResponseError(msg)
 			return
 		}
 	}
 
-	if strings.Contains(newPassword, " ") {
-		c.ResponseError("New password cannot contain blank space.")
-		return
-	}
-
-	if len(newPassword) <= 5 {
-		c.ResponseError("New password must have at least 6 characters")
+	msg := object.CheckPasswordComplexity(targetUser, newPassword)
+	if msg != "" {
+		c.ResponseError(msg)
 		return
 	}
 
 	targetUser.Password = newPassword
-	object.SetUserField(targetUser, "password", targetUser.Password)
-	c.Data["json"] = Response{Status: "ok"}
-	c.ServeJSON()
+	_, err = object.SetUserField(targetUser, "password", targetUser.Password)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk()
 }
 
 // CheckUserPassword
@@ -309,7 +481,7 @@ func (c *ApiController) CheckUserPassword() {
 		return
 	}
 
-	_, msg := object.CheckUserPassword(user.Owner, user.Name, user.Password)
+	_, msg := object.CheckUserPassword(user.Owner, user.Name, user.Password, c.GetAcceptLanguage())
 	if msg == "" {
 		c.ResponseOk()
 	} else {
@@ -331,7 +503,13 @@ func (c *ApiController) GetSortedUsers() {
 	sorter := c.Input().Get("sorter")
 	limit := util.ParseInt(c.Input().Get("limit"))
 
-	c.Data["json"] = object.GetMaskedUsers(object.GetSortedUsers(owner, sorter, limit))
+	maskedUsers, err := object.GetMaskedUsers(object.GetSortedUsers(owner, sorter, limit))
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = maskedUsers
 	c.ServeJSON()
 }
 
@@ -347,13 +525,49 @@ func (c *ApiController) GetUserCount() {
 	owner := c.Input().Get("owner")
 	isOnline := c.Input().Get("isOnline")
 
-	count := 0
+	var count int64
+	var err error
 	if isOnline == "" {
-		count = object.GetUserCount(owner, "", "")
+		count, err = object.GetUserCount(owner, "", "", "")
 	} else {
-		count = object.GetOnlineUserCount(owner, util.ParseInt(isOnline))
+		count, err = object.GetOnlineUserCount(owner, util.ParseInt(isOnline))
+	}
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
 	}
 
 	c.Data["json"] = count
+	c.ServeJSON()
+}
+
+// AddUserkeys
+// @Title AddUserkeys
+// @router /add-user-keys [post]
+// @Tag User API
+func (c *ApiController) AddUserkeys() {
+	var user object.User
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &user)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	isAdmin := c.IsAdmin()
+	affected, err := object.AddUserkeys(&user, isAdmin)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk(affected)
+}
+
+func (c *ApiController) RemoveUserFromGroup() {
+	owner := c.Ctx.Request.Form.Get("owner")
+	name := c.Ctx.Request.Form.Get("name")
+	groupName := c.Ctx.Request.Form.Get("groupName")
+
+	c.Data["json"] = wrapActionResponse(object.RemoveUserFromGroup(owner, name, groupName))
 	c.ServeJSON()
 }

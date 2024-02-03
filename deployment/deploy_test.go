@@ -21,9 +21,16 @@ import (
 	"testing"
 
 	"github.com/casdoor/casdoor/object"
+	"github.com/casdoor/casdoor/util"
 )
 
 func TestDeployStaticFiles(t *testing.T) {
-	provider := object.GetProvider("admin/provider_storage_aliyun_oss")
+	object.InitConfig()
+
+	provider, err := object.GetProvider(util.GetId("admin", "provider_storage_aliyun_oss"))
+	if err != nil {
+		panic(err)
+	}
+
 	deployStaticFiles(provider)
 }

@@ -15,6 +15,7 @@
 import React from "react";
 import {Button, Card, Col, Input, InputNumber, Row, Select} from "antd";
 import * as CertBackend from "./backend/CertBackend";
+import * as OrganizationBackend from "./backend/OrganizationBackend";
 import * as Setting from "./Setting";
 import i18next from "i18next";
 import copy from "copy-to-clipboard";
@@ -29,20 +30,42 @@ class CertEditPage extends React.Component {
     this.state = {
       classes: props,
       certName: props.match.params.certName,
+      owner: props.match.params.organizationName,
       cert: null,
+      organizations: [],
       mode: props.location.mode !== undefined ? props.location.mode : "edit",
     };
   }
 
   UNSAFE_componentWillMount() {
     this.getCert();
+    this.getOrganizations();
   }
 
   getCert() {
-    CertBackend.getCert("admin", this.state.certName)
-      .then((cert) => {
+    CertBackend.getCert(this.state.owner, this.state.certName)
+      .then((res) => {
+        if (res === null) {
+          this.props.history.push("/404");
+          return;
+        }
+
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
         this.setState({
-          cert: cert,
+          cert: res,
+        });
+      });
+  }
+
+  getOrganizations() {
+    OrganizationBackend.getOrganizations("admin")
+      .then((res) => {
+        this.setState({
+          organizations: (res.msg === undefined) ? res : [],
         });
       });
   }
@@ -65,6 +88,7 @@ class CertEditPage extends React.Component {
   }
 
   renderCert() {
+    const editorWidth = Setting.isMobile() ? 22 : 9;
     return (
       <Card size="small" title={
         <div>
@@ -74,6 +98,19 @@ class CertEditPage extends React.Component {
           {this.state.mode === "add" ? <Button style={{marginLeft: "20px"}} onClick={() => this.deleteCert()}>{i18next.t("general:Cancel")}</Button> : null}
         </div>
       } style={(Setting.isMobile()) ? {margin: "5px"} : {}} type="inner">
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:Organization"), i18next.t("general:Organization - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} style={{width: "100%"}} disabled={!Setting.isAdminUser(this.props.account)} value={this.state.cert.owner} onChange={(value => {this.updateCertField("owner", value);})}>
+              {Setting.isAdminUser(this.props.account) ? <Option key={"admin"} value={"admin"}>{i18next.t("provider:admin (Shared)")}</Option> : null}
+              {
+                this.state.organizations.map((organization, index) => <Option key={index} value={organization.name}>{organization.name}</Option>)
+              }
+            </Select>
+          </Col>
+        </Row>
         <Row style={{marginTop: "10px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Name"), i18next.t("general:Name - Tooltip"))} :
@@ -96,7 +133,7 @@ class CertEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("cert:Scope"), i18next.t("cert:Scope - Tooltip"))} :
+            {Setting.getLabel(i18next.t("provider:Scope"), i18next.t("cert:Scope - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.cert.scope} onChange={(value => {
@@ -112,7 +149,7 @@ class CertEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("cert:Type"), i18next.t("cert:Type - Tooltip"))} :
+            {Setting.getLabel(i18next.t("provider:Type"), i18next.t("cert:Type - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.cert.type} onChange={(value => {
@@ -121,6 +158,7 @@ class CertEditPage extends React.Component {
               {
                 [
                   {id: "x509", name: "x509"},
+                  {id: "Payment", name: "Payment"},
                 ].map((item, index) => <Option key={index} value={item.id}>{item.name}</Option>)
               }
             </Select>
@@ -166,7 +204,7 @@ class CertEditPage extends React.Component {
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("cert:Certificate"), i18next.t("cert:Certificate - Tooltip"))} :
           </Col>
-          <Col span={9} >
+          <Col span={editorWidth} >
             <Button style={{marginRight: "10px", marginBottom: "10px"}} onClick={() => {
               copy(this.state.cert.certificate);
               Setting.showMessage("success", i18next.t("cert:Certificate copied to clipboard successfully"));
@@ -189,7 +227,7 @@ class CertEditPage extends React.Component {
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("cert:Private key"), i18next.t("cert:Private key - Tooltip"))} :
           </Col>
-          <Col span={9} >
+          <Col span={editorWidth} >
             <Button style={{marginRight: "10px", marginBottom: "10px"}} onClick={() => {
               copy(this.state.cert.privateKey);
               Setting.showMessage("success", i18next.t("cert:Private key copied to clipboard successfully"));
@@ -215,10 +253,10 @@ class CertEditPage extends React.Component {
 
   submitCertEdit(willExist) {
     const cert = Setting.deepCopy(this.state.cert);
-    CertBackend.updateCert(this.state.cert.owner, this.state.certName, cert)
+    CertBackend.updateCert(this.state.owner, this.state.certName, cert)
       .then((res) => {
-        if (res.msg === "") {
-          Setting.showMessage("success", "Successfully saved");
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             certName: this.state.cert.name,
           });
@@ -226,25 +264,29 @@ class CertEditPage extends React.Component {
           if (willExist) {
             this.props.history.push("/certs");
           } else {
-            this.props.history.push(`/certs/${this.state.cert.name}`);
+            this.props.history.push(`/certs/${this.state.cert.owner}/${this.state.cert.name}`);
           }
         } else {
-          Setting.showMessage("error", res.msg);
+          Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
           this.updateCertField("name", this.state.certName);
         }
       })
       .catch(error => {
-        Setting.showMessage("error", `Failed to connect to server: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deleteCert() {
     CertBackend.deleteCert(this.state.cert)
-      .then(() => {
-        this.props.history.push("/certs");
+      .then((res) => {
+        if (res.status === "ok") {
+          this.props.history.push("/certs");
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
       })
       .catch(error => {
-        Setting.showMessage("error", `Cert failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 

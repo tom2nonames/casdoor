@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/astaxie/beego/utils/pagination"
+	"github.com/beego/beego/utils/pagination"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -40,21 +40,38 @@ func (c *ApiController) GetApplications() {
 	sortField := c.Input().Get("sortField")
 	sortOrder := c.Input().Get("sortOrder")
 	organization := c.Input().Get("organization")
-
+	var err error
 	if limit == "" || page == "" {
 		var applications []*object.Application
 		if organization == "" {
-			applications = object.GetApplications(owner)
+			applications, err = object.GetApplications(owner)
 		} else {
-			applications = object.GetApplicationsByOrganizationName(owner, organization)
+			applications, err = object.GetOrganizationApplications(owner, organization)
+		}
+
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
 		}
 
 		c.Data["json"] = object.GetMaskedApplications(applications, userId)
 		c.ServeJSON()
 	} else {
 		limit := util.ParseInt(limit)
-		paginator := pagination.SetPaginator(c.Ctx, limit, int64(object.GetApplicationCount(owner, field, value)))
-		applications := object.GetMaskedApplications(object.GetPaginationApplications(owner, paginator.Offset(), limit, field, value, sortField, sortOrder), userId)
+		count, err := object.GetApplicationCount(owner, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		app, err := object.GetPaginationApplications(owner, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		applications := object.GetMaskedApplications(app, userId)
 		c.ResponseOk(applications, paginator.Nums())
 	}
 }
@@ -63,14 +80,19 @@ func (c *ApiController) GetApplications() {
 // @Title GetApplication
 // @Tag Application API
 // @Description get the detail of an application
-// @Param   id     query    string  true        "The id of the application."
+// @Param   id     query    string  true        "The id ( owner/name ) of the application."
 // @Success 200 {object} object.Application The Response object
 // @router /get-application [get]
 func (c *ApiController) GetApplication() {
 	userId := c.GetSessionUsername()
 	id := c.Input().Get("id")
+	app, err := object.GetApplication(id)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 
-	c.Data["json"] = object.GetMaskedApplication(object.GetApplication(id), userId)
+	c.Data["json"] = object.GetMaskedApplication(app, userId)
 	c.ServeJSON()
 }
 
@@ -78,19 +100,30 @@ func (c *ApiController) GetApplication() {
 // @Title GetUserApplication
 // @Tag Application API
 // @Description get the detail of the user's application
-// @Param   id     query    string  true        "The id of the user"
+// @Param   id     query    string  true        "The id ( owner/name ) of the user"
 // @Success 200 {object} object.Application The Response object
 // @router /get-user-application [get]
 func (c *ApiController) GetUserApplication() {
 	userId := c.GetSessionUsername()
 	id := c.Input().Get("id")
-	user := object.GetUser(id)
-	if user == nil {
-		c.ResponseError(fmt.Sprintf("The user: %s doesn't exist", id))
+	user, err := object.GetUser(id)
+	if err != nil {
+		c.ResponseError(err.Error())
 		return
 	}
 
-	c.Data["json"] = object.GetMaskedApplication(object.GetApplicationByUser(user), userId)
+	if user == nil {
+		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), id))
+		return
+	}
+
+	app, err := object.GetApplicationByUser(user)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.Data["json"] = object.GetMaskedApplication(app, userId)
 	c.ServeJSON()
 }
 
@@ -103,24 +136,55 @@ func (c *ApiController) GetUserApplication() {
 // @router /get-organization-applications [get]
 func (c *ApiController) GetOrganizationApplications() {
 	userId := c.GetSessionUsername()
-	owner := c.Input().Get("owner")
 	organization := c.Input().Get("organization")
+	owner := c.Input().Get("owner")
+	limit := c.Input().Get("pageSize")
+	page := c.Input().Get("p")
+	field := c.Input().Get("field")
+	value := c.Input().Get("value")
+	sortField := c.Input().Get("sortField")
+	sortOrder := c.Input().Get("sortOrder")
 
 	if organization == "" {
-		c.ResponseError("Parameter organization is missing")
+		c.ResponseError(c.T("general:Missing parameter") + ": organization")
 		return
 	}
 
-	applications := object.GetApplicationsByOrganizationName(owner, organization)
-	c.Data["json"] = object.GetMaskedApplications(applications, userId)
-	c.ServeJSON()
+	if limit == "" || page == "" {
+		applications, err := object.GetOrganizationApplications(owner, organization)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		c.Data["json"] = object.GetMaskedApplications(applications, userId)
+		c.ServeJSON()
+	} else {
+		limit := util.ParseInt(limit)
+
+		count, err := object.GetOrganizationApplicationCount(owner, organization, field, value)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		paginator := pagination.SetPaginator(c.Ctx, limit, count)
+		app, err := object.GetPaginationOrganizationApplications(owner, organization, paginator.Offset(), limit, field, value, sortField, sortOrder)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+
+		applications := object.GetMaskedApplications(app, userId)
+		c.ResponseOk(applications, paginator.Nums())
+	}
 }
 
 // UpdateApplication
 // @Title UpdateApplication
 // @Tag Application API
 // @Description update an application
-// @Param   id     query    string  true        "The id of the application"
+// @Param   id     query    string  true        "The id ( owner/name ) of the application"
 // @Param   body    body   object.Application  true        "The details of the application"
 // @Success 200 {object} controllers.Response The Response object
 // @router /update-application [post]
@@ -149,6 +213,17 @@ func (c *ApiController) AddApplication() {
 	var application object.Application
 	err := json.Unmarshal(c.Ctx.Input.RequestBody, &application)
 	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	count, err := object.GetApplicationCount("", "", "")
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	if err := checkQuotaForApplication(int(count)); err != nil {
 		c.ResponseError(err.Error())
 		return
 	}

@@ -15,68 +15,57 @@
 package controllers
 
 import (
-	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
-
-type SystemInfo struct {
-	MemoryUsed  uint64    `json:"memory_used"`
-	MemoryTotal uint64    `json:"memory_total"`
-	CpuUsage    []float64 `json:"cpu_usage"`
-}
 
 // GetSystemInfo
 // @Title GetSystemInfo
 // @Tag System API
-// @Description get user's system info
-// @Param   id    query    string  true        "The id of the user"
-// @Success 200 {object} object.SystemInfo The Response object
+// @Description get system info like CPU and memory usage
+// @Success 200 {object} util.SystemInfo The Response object
 // @router /get-system-info [get]
 func (c *ApiController) GetSystemInfo() {
-	id := c.GetString("id")
-	if id == "" {
-		id = c.GetSessionUsername()
-	}
-
-	user := object.GetUser(id)
-	if user == nil || !user.IsGlobalAdmin {
-		c.ResponseError("You are not authorized to access this resource")
+	_, ok := c.RequireAdmin()
+	if !ok {
 		return
 	}
 
-	cpuUsage, err := util.GetCpuUsage()
+	systemInfo, err := util.GetSystemInfo()
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	memoryUsed, memoryTotal, err := util.GetMemoryUsage()
-	if err != nil {
-		c.ResponseError(err.Error())
-		return
-	}
-
-	c.Data["json"] = SystemInfo{
-		CpuUsage:    cpuUsage,
-		MemoryUsed:  memoryUsed,
-		MemoryTotal: memoryTotal,
-	}
-	c.ServeJSON()
+	c.ResponseOk(systemInfo)
 }
 
-// GitRepoVersion
-// @Title GitRepoVersion
+// GetVersionInfo
+// @Title GetVersionInfo
 // @Tag System API
-// @Description get local github repo's latest release version info
-// @Success 200 {string} local latest version hash of casdoor
-// @router /get-release [get]
-func (c *ApiController) GitRepoVersion() {
-	version, err := util.GetGitRepoVersion()
-	if err != nil {
-		c.ResponseError(err.Error())
-		return
+// @Description get version info like Casdoor release version and commit ID
+// @Success 200 {object} util.VersionInfo The Response object
+// @router /get-version-info [get]
+func (c *ApiController) GetVersionInfo() {
+	versionInfo, err := util.GetVersionInfo()
+
+	if versionInfo.Version == "" {
+		versionInfo, err = util.GetVersionInfoFromFile()
+
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
 	}
 
-	c.Data["json"] = version
-	c.ServeJSON()
+	c.ResponseOk(versionInfo)
+}
+
+// Health
+// @Title Health
+// @Tag System API
+// @Description check if the system is live
+// @Success 200 {object} controllers.Response The Response object
+// @router /health [get]
+func (c *ApiController) Health() {
+	c.ResponseOk()
 }

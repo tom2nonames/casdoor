@@ -13,28 +13,24 @@
 // limitations under the License.
 
 import React from "react";
-import {Alert, Button, Result, message} from "antd";
-
-export function showMessage(type, text) {
-  if (type === "success") {
-    message.success(text);
-  } else if (type === "error") {
-    message.error(text);
-  }
-}
+import {Alert, Button, Result} from "antd";
+import i18next from "i18next";
+import {getWechatMessageEvent} from "./AuthBackend";
+import * as Setting from "../Setting";
+import * as Provider from "./Provider";
 
 export function renderMessage(msg) {
   if (msg !== null) {
     return (
       <div style={{display: "inline"}}>
         <Alert
-          message="Login Error"
+          message={i18next.t("application:Failed to sign in")}
           showIcon
           description={msg}
           type="error"
           action={
-            <Button size="small" danger>
-              Detail
+            <Button size="small" type="primary" danger>
+              {i18next.t("product:Detail")}
             </Button>
           }
         />
@@ -48,27 +44,20 @@ export function renderMessage(msg) {
 export function renderMessageLarge(ths, msg) {
   if (msg !== null) {
     return (
-      <div style={{display: "inline"}}>
-        <Result
-          status="error"
-          title="There was a problem signing you in.."
-          subTitle={msg}
-          extra={[
-            <Button type="primary" key="back" onClick={() => {
-              window.history.go(-2);
-            }}>
-              Back
-            </Button>,
-            // <Button key="home" onClick={() => Setting.goToLinkSoft(ths, "/")}>
-            //   Home
-            // </Button>,
-            // <Button type="primary" key="signup" onClick={() => Setting.goToLinkSoft(ths, "/signup")}>
-            //   Sign Up
-            // </Button>,
-          ]}
-        >
-        </Result>
-      </div>
+      <Result
+        style={{margin: "0px auto"}}
+        status="error"
+        title={i18next.t("general:There was a problem signing you in..")}
+        subTitle={msg}
+        extra={[
+          <Button type="primary" key="back" onClick={() => {
+            window.history.go(-2);
+          }}>
+            {i18next.t("general:Back")}
+          </Button>,
+        ]}
+      >
+      </Result>
     );
   } else {
     return null;
@@ -76,7 +65,7 @@ export function renderMessageLarge(ths, msg) {
 }
 
 function getRefinedValue(value) {
-  return (value === null) ? "" : value;
+  return value ?? "";
 }
 
 export function getCasParameters(params) {
@@ -91,13 +80,46 @@ export function getCasParameters(params) {
   };
 }
 
+function getRawGetParameter(key) {
+  const fullUrl = window.location.href;
+  const token = fullUrl.split(`${key}=`)[1];
+  if (!token) {
+    return "";
+  }
+
+  let res = token.split("&")[0];
+  if (!res) {
+    return "";
+  }
+
+  res = decodeURIComponent(res);
+  return res;
+}
+
 export function getOAuthGetParameters(params) {
   const queries = (params !== undefined) ? params : new URLSearchParams(window.location.search);
   const clientId = getRefinedValue(queries.get("client_id"));
   const responseType = getRefinedValue(queries.get("response_type"));
-  const redirectUri = getRefinedValue(queries.get("redirect_uri"));
-  const scope = getRefinedValue(queries.get("scope"));
-  const state = getRefinedValue(queries.get("state"));
+
+  let redirectUri = getRawGetParameter("redirect_uri");
+  if (redirectUri === "") {
+    redirectUri = getRefinedValue(queries.get("redirect_uri"));
+  }
+
+  let scope = getRefinedValue(queries.get("scope"));
+  if (redirectUri.includes("#") && scope === "") {
+    scope = getRawGetParameter("scope");
+  }
+
+  let state = getRefinedValue(queries.get("state"));
+  if (state.startsWith("/auth/oauth2/login.php?wantsurl=")) {
+    // state contains URL param encoding for Moodle, URLSearchParams automatically decoded it, so here encode it again
+    state = encodeURIComponent(state);
+  }
+  if (redirectUri.includes("#") && state === "") {
+    state = getRawGetParameter("state");
+  }
+
   const nonce = getRefinedValue(queries.get("nonce"));
   const challengeMethod = getRefinedValue(queries.get("code_challenge_method"));
   const codeChallenge = getRefinedValue(queries.get("code_challenge"));
@@ -105,7 +127,7 @@ export function getOAuthGetParameters(params) {
   const relayState = getRefinedValue(queries.get("RelayState"));
   const noRedirect = getRefinedValue(queries.get("noRedirect"));
 
-  if ((clientId === undefined || clientId === null || clientId === "") && (samlRequest === "" || samlRequest === undefined)) {
+  if (clientId === "" && samlRequest === "") {
     // login
     return null;
   } else {
@@ -128,7 +150,7 @@ export function getOAuthGetParameters(params) {
 
 export function getStateFromQueryParams(applicationName, providerName, method, isShortState) {
   let query = window.location.search;
-  query = `${query}&application=${applicationName}&provider=${providerName}&method=${method}`;
+  query = `${query}&application=${encodeURIComponent(applicationName)}&provider=${encodeURIComponent(providerName)}&method=${method}`;
   if (method === "link") {
     query = `${query}&from=${window.location.pathname}`;
   }
@@ -149,4 +171,13 @@ export function getQueryParamsFromState(state) {
   } else {
     return query;
   }
+}
+
+export function getEvent(application, provider) {
+  getWechatMessageEvent()
+    .then(res => {
+      if (res.data === "SCAN" || res.data === "subscribe") {
+        Setting.goToLink(Provider.getAuthUrl(application, provider, "signup"));
+      }
+    });
 }

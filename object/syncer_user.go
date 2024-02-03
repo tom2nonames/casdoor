@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/casdoor/casdoor/util"
-	"xorm.io/core"
+	"github.com/xorm-io/core"
 )
 
 type OriginalUser = User
@@ -37,7 +37,16 @@ func (syncer *Syncer) getOriginalUsers() ([]*OriginalUser, error) {
 		return nil, err
 	}
 
-	return syncer.getOriginalUsersFromMap(results), nil
+	// Memory leak problem handling
+	// https://github.com/casdoor/casdoor/issues/1256
+	users := syncer.getOriginalUsersFromMap(results)
+	for _, m := range results {
+		for k := range m {
+			delete(m, k)
+		}
+	}
+
+	return users, nil
 }
 
 func (syncer *Syncer) getOriginalUserMap() ([]*OriginalUser, map[string]*OriginalUser, error) {
@@ -113,14 +122,18 @@ func (syncer *Syncer) updateUser(user *OriginalUser) (bool, error) {
 }
 
 func (syncer *Syncer) updateUserForOriginalFields(user *User) (bool, error) {
+	var err error
 	owner, name := util.GetOwnerAndNameFromId(user.GetId())
-	oldUser := getUserById(owner, name)
-	if oldUser == nil {
-		return false, nil
+	oldUser, err := getUser(owner, name)
+	if oldUser == nil || err != nil {
+		return false, err
 	}
 
 	if user.Avatar != oldUser.Avatar && user.Avatar != "" {
-		user.PermanentAvatar = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar)
+		user.PermanentAvatar, err = getPermanentAvatarUrl(user.Owner, user.Name, user.Avatar, true)
+		if err != nil {
+			return false, err
+		}
 	}
 
 	columns := syncer.getCasdoorColumns()
@@ -166,7 +179,11 @@ func (syncer *Syncer) initAdapter() {
 }
 
 func RunSyncUsersJob() {
-	syncers := GetSyncers("admin")
+	syncers, err := GetSyncers("admin")
+	if err != nil {
+		panic(err)
+	}
+
 	for _, syncer := range syncers {
 		addSyncerJob(syncer)
 	}

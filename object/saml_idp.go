@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -64,7 +65,7 @@ func NewSamlResponse(user *User, host string, certificate string, destination st
 	assertion.CreateAttr("IssueInstant", now)
 	assertion.CreateElement("saml:Issuer").SetText(host)
 	subject := assertion.CreateElement("saml:Subject")
-	subject.CreateElement("saml:NameID").SetText(user.Email)
+	subject.CreateElement("saml:NameID").SetText(user.Name)
 	subjectConfirmation := subject.CreateElement("saml:SubjectConfirmation")
 	subjectConfirmation.CreateAttr("Method", "urn:oasis:names:tc:SAML:2.0:cm:bearer")
 	subjectConfirmationData := subjectConfirmation.CreateElement("saml:SubjectConfirmationData")
@@ -86,18 +87,33 @@ func NewSamlResponse(user *User, host string, certificate string, destination st
 	authnStatement.CreateElement("saml:AuthnContext").CreateElement("saml:AuthnContextClassRef").SetText("urn:oasis:names:tc:SAML:2.0:ac:classes:PasswordProtectedTransport")
 
 	attributes := assertion.CreateElement("saml:AttributeStatement")
+
 	email := attributes.CreateElement("saml:Attribute")
 	email.CreateAttr("Name", "Email")
 	email.CreateAttr("NameFormat", "urn:oasis:names:tc:SAML:2.0:attrname-format:basic")
 	email.CreateElement("saml:AttributeValue").CreateAttr("xsi:type", "xs:string").Element().SetText(user.Email)
+
 	name := attributes.CreateElement("saml:Attribute")
 	name.CreateAttr("Name", "Name")
 	name.CreateAttr("NameFormat", "urn:oasis:names:tc:SAML:2.0:attrname-format:basic")
 	name.CreateElement("saml:AttributeValue").CreateAttr("xsi:type", "xs:string").Element().SetText(user.Name)
+
 	displayName := attributes.CreateElement("saml:Attribute")
 	displayName.CreateAttr("Name", "DisplayName")
 	displayName.CreateAttr("NameFormat", "urn:oasis:names:tc:SAML:2.0:attrname-format:basic")
 	displayName.CreateElement("saml:AttributeValue").CreateAttr("xsi:type", "xs:string").Element().SetText(user.DisplayName)
+
+	roles := attributes.CreateElement("saml:Attribute")
+	roles.CreateAttr("Name", "Roles")
+	roles.CreateAttr("NameFormat", "urn:oasis:names:tc:SAML:2.0:attrname-format:basic")
+	err := ExtendUserWithRolesAndPermissions(user)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, role := range user.Roles {
+		roles.CreateElement("saml:AttributeValue").CreateAttr("xsi:type", "xs:string").Element().SetText(role.Name)
+	}
 
 	return samlResponse, nil
 }
@@ -175,7 +191,15 @@ type Attribute struct {
 }
 
 func GetSamlMeta(application *Application, host string) (*IdpEntityDescriptor, error) {
-	cert := getCertByApplication(application)
+	cert, err := getCertByApplication(application)
+	if err != nil {
+		return nil, err
+	}
+
+	if cert == nil {
+		return nil, errors.New("please set a cert for the application first")
+	}
+
 	block, _ := pem.Decode([]byte(cert.Certificate))
 	certificate := base64.StdEncoding.EncodeToString(block.Bytes)
 
@@ -223,34 +247,59 @@ func GetSamlMeta(application *Application, host string) (*IdpEntityDescriptor, e
 
 // GetSamlResponse generates a SAML2.0 response
 // parameter samlRequest is saml request in base64 format
-func GetSamlResponse(application *Application, user *User, samlRequest string, host string) (string, string, error) {
+func GetSamlResponse(application *Application, user *User, samlRequest string, host string) (string, string, string, error) {
+	// request type
+	method := "GET"
+
 	// base64 decode
 	defated, err := base64.StdEncoding.DecodeString(samlRequest)
 	if err != nil {
-		return "", "", fmt.Errorf("err: %s", err.Error())
+		return "", "", method, fmt.Errorf("err: Failed to decode SAML request , %s", err.Error())
 	}
+
 	// decompress
 	var buffer bytes.Buffer
 	rdr := flate.NewReader(bytes.NewReader(defated))
-	io.Copy(&buffer, rdr)
+
+	for {
+		_, err := io.CopyN(&buffer, rdr, 1024)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", "", "", err
+		}
+	}
+
 	var authnRequest saml.AuthnRequest
 	err = xml.Unmarshal(buffer.Bytes(), &authnRequest)
 	if err != nil {
-		return "", "", fmt.Errorf("err: %s", err.Error())
+		return "", "", method, fmt.Errorf("err: Failed to unmarshal AuthnRequest, please check the SAML request. %s", err.Error())
 	}
 
 	// verify samlRequest
-	if valid := CheckRedirectUriValid(application, authnRequest.Issuer.Url); !valid {
-		return "", "", fmt.Errorf("err: invalid issuer url")
+	if isValid := application.IsRedirectUriValid(authnRequest.Issuer.Url); !isValid {
+		return "", "", method, fmt.Errorf("err: Issuer URI: %s doesn't exist in the allowed Redirect URI list", authnRequest.Issuer.Url)
 	}
 
 	// get certificate string
-	cert := getCertByApplication(application)
+	cert, err := getCertByApplication(application)
+	if err != nil {
+		return "", "", "", err
+	}
+
 	block, _ := pem.Decode([]byte(cert.Certificate))
 	certificate := base64.StdEncoding.EncodeToString(block.Bytes)
 
-	_, originBackend := getOriginFromHost(host)
+	// redirect Url (Assertion Consumer Url)
+	if application.SamlReplyUrl != "" {
+		method = "POST"
+		authnRequest.AssertionConsumerServiceURL = application.SamlReplyUrl
+	} else if authnRequest.AssertionConsumerServiceURL == "" {
+		return "", "", "", fmt.Errorf("err: SAML request don't has attribute 'AssertionConsumerServiceURL' in <samlp:AuthnRequest>")
+	}
 
+	_, originBackend := getOriginFromHost(host)
 	// build signedResponse
 	samlResponse, _ := NewSamlResponse(user, originBackend, certificate, authnRequest.AssertionConsumerServiceURL, authnRequest.Issuer.Url, authnRequest.ID, application.RedirectUris)
 	randomKeyStore := &X509Key{
@@ -270,7 +319,7 @@ func GetSamlResponse(application *Application, user *User, samlRequest string, h
 	doc.SetRoot(samlResponse)
 	xmlBytes, err := doc.WriteToBytes()
 	if err != nil {
-		return "", "", fmt.Errorf("err: %s", err.Error())
+		return "", "", method, fmt.Errorf("err: Failed to serializes the SAML request into bytes, %s", err.Error())
 	}
 
 	// compress
@@ -278,15 +327,21 @@ func GetSamlResponse(application *Application, user *User, samlRequest string, h
 		flated := bytes.NewBuffer(nil)
 		writer, err := flate.NewWriter(flated, flate.DefaultCompression)
 		if err != nil {
-			return "", "", fmt.Errorf("err: %s", err.Error())
+			return "", "", method, err
 		}
-		writer.Write(xmlBytes)
-		writer.Close()
+		_, err = writer.Write(xmlBytes)
+		if err != nil {
+			return "", "", "", err
+		}
+		err = writer.Close()
+		if err != nil {
+			return "", "", "", err
+		}
 		xmlBytes = flated.Bytes()
 	}
 	// base64 encode
 	res := base64.StdEncoding.EncodeToString(xmlBytes)
-	return res, authnRequest.AssertionConsumerServiceURL, nil
+	return res, authnRequest.AssertionConsumerServiceURL, method, err
 }
 
 // NewSamlResponse11 return a saml1.1 response(not 2.0)
@@ -350,7 +405,10 @@ func NewSamlResponse11(user *User, requestID string, host string) *etree.Element
 
 	data, _ := json.Marshal(user)
 	tmp := map[string]string{}
-	json.Unmarshal(data, &tmp)
+	err := json.Unmarshal(data, &tmp)
+	if err != nil {
+		panic(err)
+	}
 
 	for k, v := range tmp {
 		if v != "" {

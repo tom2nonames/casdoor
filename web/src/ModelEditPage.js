@@ -18,7 +18,11 @@ import * as ModelBackend from "./backend/ModelBackend";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
 import * as Setting from "./Setting";
 import i18next from "i18next";
-import TextArea from "antd/es/input/TextArea";
+
+import {Controlled as CodeMirror} from "react-codemirror2";
+import "codemirror/lib/codemirror.css";
+
+require("codemirror/mode/properties/properties");
 
 const {Option} = Select;
 
@@ -32,7 +36,6 @@ class ModelEditPage extends React.Component {
       model: null,
       organizations: [],
       users: [],
-      models: [],
       mode: props.location.mode !== undefined ? props.location.mode : "edit",
     };
   }
@@ -44,12 +47,20 @@ class ModelEditPage extends React.Component {
 
   getModel() {
     ModelBackend.getModel(this.state.organizationName, this.state.modelName)
-      .then((model) => {
-        this.setState({
-          model: model,
-        });
+      .then((res) => {
+        if (res === null) {
+          this.props.history.push("/404");
+          return;
+        }
 
-        this.getModels(model.owner);
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
+        this.setState({
+          model: res,
+        });
       });
   }
 
@@ -58,15 +69,6 @@ class ModelEditPage extends React.Component {
       .then((res) => {
         this.setState({
           organizations: (res.msg === undefined) ? res : [],
-        });
-      });
-  }
-
-  getModels(organizationName) {
-    ModelBackend.getModels(organizationName)
-      .then((res) => {
-        this.setState({
-          models: res,
         });
       });
   }
@@ -103,7 +105,7 @@ class ModelEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Organization"), i18next.t("general:Organization - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} style={{width: "100%"}} value={this.state.model.owner} onChange={(value => {this.updateModelField("owner", value);})}>
+            <Select virtual={false} style={{width: "100%"}} disabled={!Setting.isAdminUser(this.props.account)} value={this.state.model.owner} onChange={(value => {this.updateModelField("owner", value);})}>
               {
                 this.state.organizations.map((organization, index) => <Option key={index} value={organization.name}>{organization.name}</Option>)
               }
@@ -132,12 +134,28 @@ class ModelEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("general:Description"), i18next.t("general:Description - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Input value={this.state.model.description} onChange={e => {
+              this.updateModelField("description", e.target.value);
+            }} />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("model:Model text"), i18next.t("model:Model text - Tooltip"))} :
           </Col>
           <Col span={22}>
-            <TextArea rows={10} value={this.state.model.modelText} onChange={e => {
-              this.updateModelField("modelText", e.target.value);
-            }} />
+            <div style={{width: "100%"}} >
+              <CodeMirror
+                value={this.state.model.modelText}
+                options={{mode: "properties", theme: "default"}}
+                onBeforeChange={(editor, data, value) => {
+                  this.updateModelField("modelText", value);
+                }}
+              />
+            </div>
           </Col>
         </Row>
         <Row style={{marginTop: "20px"}} >
@@ -158,8 +176,8 @@ class ModelEditPage extends React.Component {
     const model = Setting.deepCopy(this.state.model);
     ModelBackend.updateModel(this.state.organizationName, this.state.modelName, model)
       .then((res) => {
-        if (res.msg === "") {
-          Setting.showMessage("success", "Successfully saved");
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             modelName: this.state.model.name,
           });
@@ -170,22 +188,26 @@ class ModelEditPage extends React.Component {
             this.props.history.push(`/models/${this.state.model.owner}/${this.state.model.name}`);
           }
         } else {
-          Setting.showMessage("error", res.msg);
+          Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
           this.updateModelField("name", this.state.modelName);
         }
       })
       .catch(error => {
-        Setting.showMessage("error", `Failed to connect to server: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deleteModel() {
     ModelBackend.deleteModel(this.state.model)
-      .then(() => {
-        this.props.history.push("/models");
+      .then((res) => {
+        if (res.status === "ok") {
+          this.props.history.push("/models");
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
       })
       .catch(error => {
-        Setting.showMessage("error", `Model failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 

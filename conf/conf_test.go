@@ -18,7 +18,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/astaxie/beego"
+	"github.com/beego/beego"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -87,9 +87,41 @@ func TestGetConfBool(t *testing.T) {
 	assert.Nil(t, err)
 	for _, scenery := range scenarios {
 		t.Run(scenery.description, func(t *testing.T) {
-			actual, err := GetConfigBool(scenery.input)
+			actual := GetConfigBool(scenery.input)
 			assert.Nil(t, err)
 			assert.Equal(t, scenery.expected, actual)
 		})
+	}
+}
+
+func TestGetConfigQuota(t *testing.T) {
+	scenarios := []struct {
+		description string
+		expected    *Quota
+	}{
+		{"default", &Quota{-1, -1, -1, -1}},
+	}
+
+	err := beego.LoadAppConfig("ini", "app.conf")
+	assert.Nil(t, err)
+	for _, scenery := range scenarios {
+		quota := GetConfigQuota()
+		assert.Equal(t, scenery.expected, quota)
+	}
+}
+
+func TestGetConfigLogs(t *testing.T) {
+	scenarios := []struct {
+		description string
+		expected    string
+	}{
+		{"Default log config", `{"filename": "logs/casdoor.log", "maxdays":99999, "perm":"0770"}`},
+	}
+
+	err := beego.LoadAppConfig("ini", "app.conf")
+	assert.Nil(t, err)
+	for _, scenery := range scenarios {
+		quota := GetConfigString("logConfig")
+		assert.Equal(t, scenery.expected, quota)
 	}
 }

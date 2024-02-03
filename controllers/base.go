@@ -18,8 +18,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/astaxie/beego"
-	"github.com/astaxie/beego/logs"
+	"github.com/beego/beego"
+	"github.com/beego/beego/logs"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -41,18 +41,49 @@ type SessionData struct {
 }
 
 func (c *ApiController) IsGlobalAdmin() bool {
-	username := c.GetSessionUsername()
-	if strings.HasPrefix(username, "app/") {
-		// e.g., "app/app-casnode"
-		return true
-	}
+	isGlobalAdmin, _ := c.isGlobalAdmin()
 
-	user := object.GetUser(username)
-	if user == nil {
+	return isGlobalAdmin
+}
+
+func (c *ApiController) IsAdmin() bool {
+	isGlobalAdmin, user := c.isGlobalAdmin()
+	if !isGlobalAdmin && user == nil {
 		return false
 	}
 
-	return user.Owner == "built-in" || user.IsGlobalAdmin
+	return isGlobalAdmin || user.IsAdmin
+}
+
+func (c *ApiController) isGlobalAdmin() (bool, *object.User) {
+	username := c.GetSessionUsername()
+	if strings.HasPrefix(username, "app/") {
+		// e.g., "app/app-casnode"
+		return true, nil
+	}
+
+	user := c.getCurrentUser()
+	if user == nil {
+		return false, nil
+	}
+
+	return user.Owner == "built-in" || user.IsGlobalAdmin, user
+}
+
+func (c *ApiController) getCurrentUser() *object.User {
+	var user *object.User
+	var err error
+	userId := c.GetSessionUsername()
+	if userId == "" {
+		user = nil
+	} else {
+		user, err = object.GetUser(userId)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return nil
+		}
+	}
+	return user
 }
 
 // GetSessionUsername ...
@@ -63,8 +94,7 @@ func (c *ApiController) GetSessionUsername() string {
 	if sessionData != nil &&
 		sessionData.ExpireTime != 0 &&
 		sessionData.ExpireTime < time.Now().Unix() {
-		c.SetSessionUsername("")
-		c.SetSessionData(nil)
+		c.ClearUserSession()
 		return ""
 	}
 
@@ -81,8 +111,18 @@ func (c *ApiController) GetSessionApplication() *object.Application {
 	if clientId == nil {
 		return nil
 	}
-	application := object.GetApplicationByClientId(clientId.(string))
+	application, err := object.GetApplicationByClientId(clientId.(string))
+	if err != nil {
+		c.ResponseError(err.Error())
+		return nil
+	}
+
 	return application
+}
+
+func (c *ApiController) ClearUserSession() {
+	c.SetSessionUsername("")
+	c.SetSessionData(nil)
 }
 
 func (c *ApiController) GetSessionOidc() (string, string) {
@@ -90,8 +130,7 @@ func (c *ApiController) GetSessionOidc() (string, string) {
 	if sessionData != nil &&
 		sessionData.ExpireTime != 0 &&
 		sessionData.ExpireTime < time.Now().Unix() {
-		c.SetSessionUsername("")
-		c.SetSessionData(nil)
+		c.ClearUserSession()
 		return "", ""
 	}
 	scopeValue := c.GetSession("scope")
@@ -139,8 +178,30 @@ func (c *ApiController) SetSessionData(s *SessionData) {
 	c.SetSession("SessionData", util.StructToJson(s))
 }
 
-func wrapActionResponse(affected bool) *Response {
-	if affected {
+func (c *ApiController) setMfaUserSession(userId string) {
+	c.SetSession(object.MfaSessionUserId, userId)
+}
+
+func (c *ApiController) getMfaUserSession() string {
+	userId := c.Ctx.Input.CruSession.Get(object.MfaSessionUserId)
+	if userId == nil {
+		return ""
+	}
+	return userId.(string)
+}
+
+func (c *ApiController) setExpireForSession() {
+	timestamp := time.Now().Unix()
+	timestamp += 3600 * 24
+	c.SetSessionData(&SessionData{
+		ExpireTime: timestamp,
+	})
+}
+
+func wrapActionResponse(affected bool, e ...error) *Response {
+	if len(e) != 0 && e[0] != nil {
+		return &Response{Status: "error", Msg: e[0].Error()}
+	} else if affected {
 		return &Response{Status: "ok", Msg: "", Data: "Affected"}
 	} else {
 		return &Response{Status: "ok", Msg: "", Data: "Unaffected"}
@@ -153,4 +214,15 @@ func wrapErrorResponse(err error) *Response {
 	} else {
 		return &Response{Status: "error", Msg: err.Error()}
 	}
+}
+
+func (c *ApiController) Finish() {
+	if strings.HasPrefix(c.Ctx.Input.URL(), "/api") {
+		startTime := c.Ctx.Input.GetData("startTime")
+		if startTime != nil {
+			latency := time.Since(startTime.(time.Time)).Milliseconds()
+			object.ApiLatency.WithLabelValues(c.Ctx.Input.URL(), c.Ctx.Input.Method()).Observe(float64(latency))
+		}
+	}
+	c.Controller.Finish()
 }

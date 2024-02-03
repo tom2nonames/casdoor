@@ -20,9 +20,9 @@
 package routers
 
 import (
-	"github.com/astaxie/beego"
-
+	"github.com/beego/beego"
 	"github.com/casdoor/casdoor/controllers"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func init() {
@@ -44,16 +44,22 @@ func initAPI() {
 	)
 	beego.AddNamespace(ns)
 
+	beego.Router("/api/wechat-miniprogram-phone-bind", &controllers.ApiController{}, "POST:WechatMiniprogramPhoneBind")
+
 	beego.Router("/api/signup", &controllers.ApiController{}, "POST:Signup")
 	beego.Router("/api/login", &controllers.ApiController{}, "POST:Login")
 	beego.Router("/api/get-app-login", &controllers.ApiController{}, "GET:GetApplicationLogin")
 	beego.Router("/api/logout", &controllers.ApiController{}, "GET,POST:Logout")
 	beego.Router("/api/get-account", &controllers.ApiController{}, "GET:GetAccount")
 	beego.Router("/api/userinfo", &controllers.ApiController{}, "GET:GetUserinfo")
+	beego.Router("/api/user", &controllers.ApiController{}, "GET:GetUserinfo2")
 	beego.Router("/api/unlink", &controllers.ApiController{}, "POST:Unlink")
 	beego.Router("/api/get-saml-login", &controllers.ApiController{}, "GET:GetSamlLogin")
 	beego.Router("/api/acs", &controllers.ApiController{}, "POST:HandleSamlLogin")
 	beego.Router("/api/saml/metadata", &controllers.ApiController{}, "GET:GetSamlMeta")
+	beego.Router("/api/webhook", &controllers.ApiController{}, "POST:HandleOfficialAccountEvent")
+	beego.Router("/api/get-webhook-event", &controllers.ApiController{}, "GET:GetWebhookEventType")
+	beego.Router("/api/get-captcha-status", &controllers.ApiController{}, "GET:GetCaptchaStatus")
 
 	beego.Router("/api/get-organizations", &controllers.ApiController{}, "GET:GetOrganizations")
 	beego.Router("/api/get-organization", &controllers.ApiController{}, "GET:GetOrganization")
@@ -61,6 +67,7 @@ func initAPI() {
 	beego.Router("/api/add-organization", &controllers.ApiController{}, "POST:AddOrganization")
 	beego.Router("/api/delete-organization", &controllers.ApiController{}, "POST:DeleteOrganization")
 	beego.Router("/api/get-default-application", &controllers.ApiController{}, "GET:GetDefaultApplication")
+	beego.Router("/api/get-organization-names", &controllers.ApiController{}, "GET:GetOrganizationNames")
 
 	beego.Router("/api/get-global-users", &controllers.ApiController{}, "GET:GetGlobalUsers")
 	beego.Router("/api/get-users", &controllers.ApiController{}, "GET:GetUsers")
@@ -68,23 +75,41 @@ func initAPI() {
 	beego.Router("/api/get-user-count", &controllers.ApiController{}, "GET:GetUserCount")
 	beego.Router("/api/get-user", &controllers.ApiController{}, "GET:GetUser")
 	beego.Router("/api/update-user", &controllers.ApiController{}, "POST:UpdateUser")
+	beego.Router("/api/add-user-keys", &controllers.ApiController{}, "POST:AddUserkeys")
 	beego.Router("/api/add-user", &controllers.ApiController{}, "POST:AddUser")
 	beego.Router("/api/delete-user", &controllers.ApiController{}, "POST:DeleteUser")
 	beego.Router("/api/upload-users", &controllers.ApiController{}, "POST:UploadUsers")
+	beego.Router("/api/remove-user-from-group", &controllers.ApiController{}, "POST:RemoveUserFromGroup")
+
+	beego.Router("/api/get-groups", &controllers.ApiController{}, "GET:GetGroups")
+	beego.Router("/api/get-group", &controllers.ApiController{}, "GET:GetGroup")
+	beego.Router("/api/update-group", &controllers.ApiController{}, "POST:UpdateGroup")
+	beego.Router("/api/add-group", &controllers.ApiController{}, "POST:AddGroup")
+	beego.Router("/api/delete-group", &controllers.ApiController{}, "POST:DeleteGroup")
 
 	beego.Router("/api/get-roles", &controllers.ApiController{}, "GET:GetRoles")
 	beego.Router("/api/get-role", &controllers.ApiController{}, "GET:GetRole")
 	beego.Router("/api/update-role", &controllers.ApiController{}, "POST:UpdateRole")
 	beego.Router("/api/add-role", &controllers.ApiController{}, "POST:AddRole")
 	beego.Router("/api/delete-role", &controllers.ApiController{}, "POST:DeleteRole")
+	beego.Router("/api/set-roles", &controllers.ApiController{}, "POST:SetRoles")
+	beego.Router("/api/upload-roles", &controllers.ApiController{}, "POST:UploadRoles")
 
 	beego.Router("/api/get-permissions", &controllers.ApiController{}, "GET:GetPermissions")
 	beego.Router("/api/get-permissions-by-submitter", &controllers.ApiController{}, "GET:GetPermissionsBySubmitter")
+	beego.Router("/api/get-permissions-by-role", &controllers.ApiController{}, "GET:GetPermissionsByRole")
 	beego.Router("/api/get-permission", &controllers.ApiController{}, "GET:GetPermission")
 	beego.Router("/api/update-permission", &controllers.ApiController{}, "POST:UpdatePermission")
 	beego.Router("/api/add-permission", &controllers.ApiController{}, "POST:AddPermission")
 	beego.Router("/api/delete-permission", &controllers.ApiController{}, "POST:DeletePermission")
+	beego.Router("/api/upload-permissions", &controllers.ApiController{}, "POST:UploadPermissions")
 
+	beego.Router("/api/add-permission-view", &controllers.ApiController{}, "POST:AddPermissionView")
+	beego.Router("/api/add-permission-view-assign", &controllers.ApiController{}, "POST:AddPermissionViewAssign")
+	beego.Router("/api/permission-view-enforce", &controllers.ApiController{}, "POST:PermissionViewEnforce")
+	beego.Router("/api/permission-view-generate-json-tree", &controllers.ApiController{}, "POST:PermissionViewGenerateJsonTree")
+
+	beego.Router("/api/url-action-authz", &controllers.ApiController{}, "POST:UrlActionAuthz")
 	beego.Router("/api/enforce", &controllers.ApiController{}, "POST:Enforce")
 	beego.Router("/api/batch-enforce", &controllers.ApiController{}, "POST:BatchEnforce")
 	beego.Router("/api/get-all-objects", &controllers.ApiController{}, "GET:GetAllObjects")
@@ -103,26 +128,30 @@ func initAPI() {
 	beego.Router("/api/add-adapter", &controllers.ApiController{}, "POST:AddCasbinAdapter")
 	beego.Router("/api/delete-adapter", &controllers.ApiController{}, "POST:DeleteCasbinAdapter")
 	beego.Router("/api/sync-policies", &controllers.ApiController{}, "GET:SyncPolicies")
+	beego.Router("/api/update-policy", &controllers.ApiController{}, "POST:UpdatePolicy")
+	beego.Router("/api/add-policy", &controllers.ApiController{}, "POST:AddPolicy")
+	beego.Router("/api/remove-policy", &controllers.ApiController{}, "POST:RemovePolicy")
 
 	beego.Router("/api/set-password", &controllers.ApiController{}, "POST:SetPassword")
 	beego.Router("/api/check-user-password", &controllers.ApiController{}, "POST:CheckUserPassword")
-	beego.Router("/api/get-email-and-phone", &controllers.ApiController{}, "POST:GetEmailAndPhone")
+	beego.Router("/api/get-email-and-phone", &controllers.ApiController{}, "GET:GetEmailAndPhone")
 	beego.Router("/api/send-verification-code", &controllers.ApiController{}, "POST:SendVerificationCode")
+	beego.Router("/api/verify-code", &controllers.ApiController{}, "POST:VerifyCode")
 	beego.Router("/api/verify-captcha", &controllers.ApiController{}, "POST:VerifyCaptcha")
 	beego.Router("/api/reset-email-or-phone", &controllers.ApiController{}, "POST:ResetEmailOrPhone")
 	beego.Router("/api/get-captcha", &controllers.ApiController{}, "GET:GetCaptcha")
 
-	beego.Router("/api/get-ldap-user", &controllers.ApiController{}, "POST:GetLdapUser")
-	beego.Router("/api/get-ldaps", &controllers.ApiController{}, "POST:GetLdaps")
-	beego.Router("/api/get-ldap", &controllers.ApiController{}, "POST:GetLdap")
+	beego.Router("/api/get-ldap-users", &controllers.ApiController{}, "GET:GetLdapUsers")
+	beego.Router("/api/get-ldaps", &controllers.ApiController{}, "GET:GetLdaps")
+	beego.Router("/api/get-ldap", &controllers.ApiController{}, "GET:GetLdap")
 	beego.Router("/api/add-ldap", &controllers.ApiController{}, "POST:AddLdap")
 	beego.Router("/api/update-ldap", &controllers.ApiController{}, "POST:UpdateLdap")
 	beego.Router("/api/delete-ldap", &controllers.ApiController{}, "POST:DeleteLdap")
-	beego.Router("/api/check-ldap-users-exist", &controllers.ApiController{}, "POST:CheckLdapUsersExist")
 	beego.Router("/api/sync-ldap-users", &controllers.ApiController{}, "POST:SyncLdapUsers")
 
 	beego.Router("/api/get-providers", &controllers.ApiController{}, "GET:GetProviders")
 	beego.Router("/api/get-provider", &controllers.ApiController{}, "GET:GetProvider")
+	beego.Router("/api/get-global-providers", &controllers.ApiController{}, "GET:GetGlobalProviders")
 	beego.Router("/api/update-provider", &controllers.ApiController{}, "POST:UpdateProvider")
 	beego.Router("/api/add-provider", &controllers.ApiController{}, "POST:AddProvider")
 	beego.Router("/api/delete-provider", &controllers.ApiController{}, "POST:DeleteProvider")
@@ -147,15 +176,19 @@ func initAPI() {
 	beego.Router("/api/update-token", &controllers.ApiController{}, "POST:UpdateToken")
 	beego.Router("/api/add-token", &controllers.ApiController{}, "POST:AddToken")
 	beego.Router("/api/delete-token", &controllers.ApiController{}, "POST:DeleteToken")
-	beego.Router("/api/login/oauth/code", &controllers.ApiController{}, "POST:GetOAuthCode")
 	beego.Router("/api/login/oauth/access_token", &controllers.ApiController{}, "POST:GetOAuthToken")
 	beego.Router("/api/login/oauth/refresh_token", &controllers.ApiController{}, "POST:RefreshToken")
 	beego.Router("/api/login/oauth/introspect", &controllers.ApiController{}, "POST:IntrospectToken")
-	beego.Router("/api/login/oauth/logout", &controllers.ApiController{}, "GET:TokenLogout")
-
 	beego.Router("/api/get-records", &controllers.ApiController{}, "GET:GetRecords")
 	beego.Router("/api/get-records-filter", &controllers.ApiController{}, "POST:GetRecordsByFilter")
 	beego.Router("/api/add-record", &controllers.ApiController{}, "POST:AddRecord")
+
+	beego.Router("/api/get-sessions", &controllers.ApiController{}, "GET:GetSessions")
+	beego.Router("/api/get-session", &controllers.ApiController{}, "GET:GetSingleSession")
+	beego.Router("/api/update-session", &controllers.ApiController{}, "POST:UpdateSession")
+	beego.Router("/api/add-session", &controllers.ApiController{}, "POST:AddSession")
+	beego.Router("/api/delete-session", &controllers.ApiController{}, "POST:DeleteSession")
+	beego.Router("/api/is-session-duplicated", &controllers.ApiController{}, "GET:IsSessionDuplicated")
 
 	beego.Router("/api/get-webhooks", &controllers.ApiController{}, "GET:GetWebhooks")
 	beego.Router("/api/get-webhook", &controllers.ApiController{}, "GET:GetWebhook")
@@ -171,10 +204,42 @@ func initAPI() {
 	beego.Router("/api/run-syncer", &controllers.ApiController{}, "GET:RunSyncer")
 
 	beego.Router("/api/get-certs", &controllers.ApiController{}, "GET:GetCerts")
+	beego.Router("/api/get-globle-certs", &controllers.ApiController{}, "GET:GetGlobleCerts")
 	beego.Router("/api/get-cert", &controllers.ApiController{}, "GET:GetCert")
 	beego.Router("/api/update-cert", &controllers.ApiController{}, "POST:UpdateCert")
 	beego.Router("/api/add-cert", &controllers.ApiController{}, "POST:AddCert")
 	beego.Router("/api/delete-cert", &controllers.ApiController{}, "POST:DeleteCert")
+
+	beego.Router("/api/get-chats", &controllers.ApiController{}, "GET:GetChats")
+	beego.Router("/api/get-chat", &controllers.ApiController{}, "GET:GetChat")
+	beego.Router("/api/update-chat", &controllers.ApiController{}, "POST:UpdateChat")
+	beego.Router("/api/add-chat", &controllers.ApiController{}, "POST:AddChat")
+	beego.Router("/api/delete-chat", &controllers.ApiController{}, "POST:DeleteChat")
+
+	beego.Router("/api/get-messages", &controllers.ApiController{}, "GET:GetMessages")
+	beego.Router("/api/get-message", &controllers.ApiController{}, "GET:GetMessage")
+	beego.Router("/api/get-message-answer", &controllers.ApiController{}, "GET:GetMessageAnswer")
+	beego.Router("/api/update-message", &controllers.ApiController{}, "POST:UpdateMessage")
+	beego.Router("/api/add-message", &controllers.ApiController{}, "POST:AddMessage")
+	beego.Router("/api/delete-message", &controllers.ApiController{}, "POST:DeleteMessage")
+
+	beego.Router("/api/get-subscriptions", &controllers.ApiController{}, "GET:GetSubscriptions")
+	beego.Router("/api/get-subscription", &controllers.ApiController{}, "GET:GetSubscription")
+	beego.Router("/api/update-subscription", &controllers.ApiController{}, "POST:UpdateSubscription")
+	beego.Router("/api/add-subscription", &controllers.ApiController{}, "POST:AddSubscription")
+	beego.Router("/api/delete-subscription", &controllers.ApiController{}, "POST:DeleteSubscription")
+
+	beego.Router("/api/get-plans", &controllers.ApiController{}, "GET:GetPlans")
+	beego.Router("/api/get-plan", &controllers.ApiController{}, "GET:GetPlan")
+	beego.Router("/api/update-plan", &controllers.ApiController{}, "POST:UpdatePlan")
+	beego.Router("/api/add-plan", &controllers.ApiController{}, "POST:AddPlan")
+	beego.Router("/api/delete-plan", &controllers.ApiController{}, "POST:DeletePlan")
+
+	beego.Router("/api/get-pricings", &controllers.ApiController{}, "GET:GetPricings")
+	beego.Router("/api/get-pricing", &controllers.ApiController{}, "GET:GetPricing")
+	beego.Router("/api/update-pricing", &controllers.ApiController{}, "POST:UpdatePricing")
+	beego.Router("/api/add-pricing", &controllers.ApiController{}, "POST:AddPricing")
+	beego.Router("/api/delete-pricing", &controllers.ApiController{}, "POST:DeletePricing")
 
 	beego.Router("/api/get-products", &controllers.ApiController{}, "GET:GetProducts")
 	beego.Router("/api/get-product", &controllers.ApiController{}, "GET:GetProduct")
@@ -212,6 +277,17 @@ func initAPI() {
 	beego.Router("/api/webauthn/signin/begin", &controllers.ApiController{}, "Get:WebAuthnSigninBegin")
 	beego.Router("/api/webauthn/signin/finish", &controllers.ApiController{}, "Post:WebAuthnSigninFinish")
 
+	beego.Router("/api/mfa/setup/initiate", &controllers.ApiController{}, "POST:MfaSetupInitiate")
+	beego.Router("/api/mfa/setup/verify", &controllers.ApiController{}, "POST:MfaSetupVerify")
+	beego.Router("/api/mfa/setup/enable", &controllers.ApiController{}, "POST:MfaSetupEnable")
+	beego.Router("/api/delete-mfa", &controllers.ApiController{}, "POST:DeleteMfa")
+	beego.Router("/api/set-preferred-mfa", &controllers.ApiController{}, "POST:SetPreferredMfa")
+
 	beego.Router("/api/get-system-info", &controllers.ApiController{}, "GET:GetSystemInfo")
-	beego.Router("/api/get-release", &controllers.ApiController{}, "GET:GitRepoVersion")
+
+	beego.Router("/api/get-version-info", &controllers.ApiController{}, "GET:GetVersionInfo")
+	beego.Router("/api/health", &controllers.ApiController{}, "GET:Health")
+	beego.Router("/api/get-prometheus-info", &controllers.ApiController{}, "GET:GetPrometheusInfo")
+
+	beego.Handler("/api/metrics", promhttp.Handler())
 }

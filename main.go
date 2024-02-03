@@ -18,23 +18,31 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/astaxie/beego"
-	"github.com/astaxie/beego/logs"
-	_ "github.com/astaxie/beego/session/redis"
+	"github.com/beego/beego"
+	"github.com/beego/beego/logs"
+	_ "github.com/beego/beego/session/redis"
 	"github.com/casdoor/casdoor/authz"
 	"github.com/casdoor/casdoor/conf"
+	"github.com/casdoor/casdoor/ldap"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/proxy"
 	"github.com/casdoor/casdoor/routers"
-	_ "github.com/casdoor/casdoor/routers"
 	"github.com/casdoor/casdoor/util"
 )
 
-func main() {
-	createDatabase := flag.Bool("createDatabase", false, "true if you need Casdoor to create database")
+func getCreateDatabaseFlag() bool {
+	res := flag.Bool("createDatabase", false, "true if you need Casdoor to create database")
 	flag.Parse()
+	return *res
+}
 
-	object.InitAdapter(*createDatabase)
+func main() {
+	createDatabase := getCreateDatabaseFlag()
+
+	object.InitAdapter()
+	object.CreateTables(createDatabase)
+	object.DoMigration()
+
 	object.InitDb()
 	object.InitFromFile()
 	object.InitDefaultStorageProvider()
@@ -55,6 +63,7 @@ func main() {
 	beego.InsertFilter("*", beego.BeforeRouter, routers.AutoSigninFilter)
 	beego.InsertFilter("*", beego.BeforeRouter, routers.CorsFilter)
 	beego.InsertFilter("*", beego.BeforeRouter, routers.AuthzFilter)
+	beego.InsertFilter("*", beego.BeforeRouter, routers.PrometheusFilter)
 	beego.InsertFilter("*", beego.BeforeRouter, routers.RecordMessage)
 
 	beego.BConfig.WebConfig.Session.SessionOn = true
@@ -69,12 +78,16 @@ func main() {
 	beego.BConfig.WebConfig.Session.SessionCookieLifeTime = 3600 * 24 * 30
 	// beego.BConfig.WebConfig.Session.SessionCookieSameSite = http.SameSiteNoneMode
 
-	err := logs.SetLogger("file", `{"filename":"logs/casdoor.log","maxdays":99999,"perm":"0770"}`)
+	err := logs.SetLogger(logs.AdapterFile, conf.GetConfigString("logConfig"))
 	if err != nil {
 		panic(err)
 	}
 	port := beego.AppConfig.DefaultInt("httpport", 8000)
 	// logs.SetLevel(logs.LevelInformational)
 	logs.SetLogFuncCall(false)
+
+	go ldap.StartLdapServer()
+	go object.ClearThroughputPerSecond()
+
 	beego.Run(fmt.Sprintf(":%v", port))
 }

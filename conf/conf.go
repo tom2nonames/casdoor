@@ -15,14 +15,23 @@
 package conf
 
 import (
-	"fmt"
+	"encoding/json"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 
-	"github.com/astaxie/beego"
+	"github.com/beego/beego"
 )
+
+type Quota struct {
+	Organization int `json:"organization"`
+	User         int `json:"user"`
+	Application  int `json:"application"`
+	Provider     int `json:"provider"`
+}
+
+var quota = &Quota{-1, -1, -1, -1}
 
 func init() {
 	// this array contains the beego configuration items that may be modified via env
@@ -33,6 +42,17 @@ func init() {
 			if err != nil {
 				panic(err)
 			}
+		}
+	}
+	initQuota()
+}
+
+func initQuota() {
+	res := beego.AppConfig.String("quota")
+	if res != "" {
+		err := json.Unmarshal([]byte(res), quota)
+		if err != nil {
+			panic(err)
 		}
 	}
 }
@@ -46,20 +66,21 @@ func GetConfigString(key string) string {
 	if res == "" {
 		if key == "staticBaseUrl" {
 			res = "https://cdn.casbin.org"
+		} else if key == "logConfig" {
+			res = "{\"filename\": \"logs/casdoor.log\", \"maxdays\":99999, \"perm\":\"0770\"}"
 		}
 	}
 
 	return res
 }
 
-func GetConfigBool(key string) (bool, error) {
+func GetConfigBool(key string) bool {
 	value := GetConfigString(key)
 	if value == "true" {
-		return true, nil
-	} else if value == "false" {
-		return false, nil
+		return true
+	} else {
+		return false
 	}
-	return false, fmt.Errorf("value %s cannot be converted into bool", value)
 }
 
 func GetConfigInt64(key string) (int64, error) {
@@ -84,6 +105,18 @@ func GetConfigDataSourceName() string {
 	return dataSourceName
 }
 
+func GetLanguage(language string) string {
+	if language == "" || language == "*" {
+		return "en"
+	}
+
+	if len(language) != 2 || language == "nu" {
+		return "en"
+	} else {
+		return language
+	}
+}
+
 func IsDemoMode() bool {
 	return strings.ToLower(GetConfigString("isDemoMode")) == "true"
 }
@@ -94,4 +127,18 @@ func GetConfigBatchSize() int {
 		res = 100
 	}
 	return res
+}
+
+func GetConfigQuota() *Quota {
+	return quota
+}
+
+func GetConfigRealDataSourceName(driverName string) string {
+	var dataSourceName string
+	if driverName != "mysql" {
+		dataSourceName = GetConfigDataSourceName()
+	} else {
+		dataSourceName = GetConfigDataSourceName() + GetConfigString("dbName")
+	}
+	return dataSourceName
 }

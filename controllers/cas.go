@@ -72,6 +72,11 @@ func (c *RootController) CasProxyValidate() {
 	c.CasP3ServiceAndProxyValidate()
 }
 
+func queryUnescape(service string) string {
+	s, _ := url.QueryUnescape(service)
+	return s
+}
+
 func (c *RootController) CasP3ServiceAndProxyValidate() {
 	ticket := c.Input().Get("ticket")
 	format := c.Input().Get("format")
@@ -91,7 +96,7 @@ func (c *RootController) CasP3ServiceAndProxyValidate() {
 	// find the token
 	if ok {
 		// check whether service is the one for which we previously issued token
-		if strings.HasPrefix(service, issuedService) {
+		if strings.HasPrefix(service, issuedService) || strings.HasPrefix(queryUnescape(service), issuedService) {
 			serviceResponse.Success = response
 		} else {
 			// service not match
@@ -210,7 +215,7 @@ func (c *RootController) SamlValidate() {
 	}
 
 	if !strings.HasPrefix(target, service) {
-		c.ResponseError(fmt.Sprintf("service %s and %s do not match", target, service))
+		c.ResponseError(fmt.Sprintf(c.T("cas:Service %s and %s do not match"), target, service))
 		return
 	}
 

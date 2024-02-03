@@ -18,9 +18,11 @@ import "react-app-polyfill/stable";
 import React from "react";
 import {createRoot} from "react-dom/client";
 import "./index.css";
+import "./App.less";
 import App from "./App";
 import * as serviceWorker from "./serviceWorker";
 import {BrowserRouter} from "react-router-dom";
+import "./backend/FetchFilter";
 
 const container = document.getElementById("root");
 

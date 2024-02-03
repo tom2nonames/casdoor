@@ -17,7 +17,7 @@ package routers
 import (
 	"fmt"
 
-	"github.com/astaxie/beego/context"
+	"github.com/beego/beego/context"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
@@ -32,7 +32,12 @@ func AutoSigninFilter(ctx *context.Context) {
 	accessToken := util.GetMaxLenStr(ctx.Input.Query("accessToken"), ctx.Input.Query("access_token"), parseBearerToken(ctx))
 
 	if accessToken != "" {
-		token := object.GetTokenByAccessToken(accessToken)
+		token, err := object.GetTokenByAccessToken(accessToken)
+		if err != nil {
+			responseError(ctx, err.Error())
+			return
+		}
+
 		if token == nil {
 			responseError(ctx, "Access token doesn't exist")
 			return
@@ -43,8 +48,12 @@ func AutoSigninFilter(ctx *context.Context) {
 			return
 		}
 
-		userId := fmt.Sprintf("%s/%s", token.Organization, token.User)
-		application, _ := object.GetApplicationByUserId(fmt.Sprintf("app/%s", token.Application))
+		userId := util.GetId(token.Organization, token.User)
+		application, err := object.GetApplicationByUserId(fmt.Sprintf("app/%s", token.Application))
+		if err != nil {
+			panic(err)
+		}
+
 		setSessionUser(ctx, userId)
 		setSessionOidc(ctx, token.Scope, application.ClientId)
 		return
@@ -57,12 +66,12 @@ func AutoSigninFilter(ctx *context.Context) {
 		return
 	}
 
-	// "/page?username=abc&password=123"
+	// "/page?username=built-in/admin&password=123"
 	userId = ctx.Input.Query("username")
 	password := ctx.Input.Query("password")
 	if userId != "" && password != "" && ctx.Input.Query("grant_type") == "" {
 		owner, name := util.GetOwnerAndNameFromId(userId)
-		_, msg := object.CheckUserPassword(owner, name, password)
+		_, msg := object.CheckUserPassword(owner, name, password, "en")
 		if msg != "" {
 			responseError(ctx, msg)
 			return

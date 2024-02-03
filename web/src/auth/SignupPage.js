@@ -13,8 +13,7 @@
 // limitations under the License.
 
 import React from "react";
-import {Link} from "react-router-dom";
-import {Button, Checkbox, Col, Form, Input, Modal, Result, Row} from "antd";
+import {Button, Form, Input, Result} from "antd";
 import * as Setting from "../Setting";
 import * as AuthBackend from "./AuthBackend";
 import * as ProviderButton from "./ProviderButton";
@@ -22,9 +21,14 @@ import i18next from "i18next";
 import * as Util from "./Util";
 import {authConfig} from "./Auth";
 import * as ApplicationBackend from "../backend/ApplicationBackend";
-import {CountDownInput} from "../common/CountDownInput";
-import SelectRegionBox from "../SelectRegionBox";
-import CustomGithubCorner from "../CustomGithubCorner";
+import * as AgreementModal from "../common/modal/AgreementModal";
+import {SendCodeInput} from "../common/SendCodeInput";
+import RegionSelect from "../common/select/RegionSelect";
+import CustomGithubCorner from "../common/CustomGithubCorner";
+import LanguageSelect from "../common/select/LanguageSelect";
+import {withRouter} from "react-router-dom";
+import {CountryCodeSelect} from "../common/select/CountryCodeSelect";
+import * as PasswordChecker from "../common/PasswordChecker";
 
 const formItemLayout = {
   labelCol: {
@@ -40,12 +44,12 @@ const formItemLayout = {
       span: 24,
     },
     sm: {
-      span: 18,
+      span: 16,
     },
   },
 };
 
-const tailFormItemLayout = {
+export const tailFormItemLayout = {
   wrapperCol: {
     xs: {
       span: 24,
@@ -63,10 +67,10 @@ class SignupPage extends React.Component {
     super(props);
     this.state = {
       classes: props,
-      applicationName: props.match?.params.applicationName !== undefined ? props.match.params.applicationName : authConfig.appName,
-      application: null,
+      applicationName: (props.applicationName ?? props.match?.params?.applicationName) ?? null,
       email: "",
       phone: "",
+      countryCode: "",
       emailCode: "",
       phoneCode: "",
       validEmail: false,
@@ -79,20 +83,22 @@ class SignupPage extends React.Component {
     this.form = React.createRef();
   }
 
-  UNSAFE_componentWillMount() {
-    let applicationName = this.state.applicationName;
+  componentDidMount() {
     const oAuthParams = Util.getOAuthGetParameters();
     if (oAuthParams !== null) {
-      applicationName = oAuthParams.state;
-      this.setState({applicationName: oAuthParams.state});
       const signinUrl = window.location.href.replace("/signup/oauth/authorize", "/login/oauth/authorize");
       sessionStorage.setItem("signinUrl", signinUrl);
     }
 
-    if (applicationName !== undefined) {
-      this.getApplication(applicationName);
-    } else {
-      Util.showMessage("error", `Unknown application name: ${applicationName}`);
+    if (this.getApplicationObj() === undefined) {
+      if (this.state.applicationName !== null) {
+        this.getApplication(this.state.applicationName);
+      } else if (oAuthParams !== null) {
+        this.getApplicationLogin(oAuthParams);
+      } else {
+        Setting.showMessage("error", `Unknown application name: ${this.state.applicationName}`);
+        this.onUpdateApplication(null);
+      }
     }
   }
 
@@ -102,13 +108,27 @@ class SignupPage extends React.Component {
     }
 
     ApplicationBackend.getApplication("admin", applicationName)
-      .then((application) => {
-        this.setState({
-          application: application,
-        });
+      .then((res) => {
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
 
-        if (application !== null && application !== undefined) {
-          this.getTermsofuseContent(application.termsOfUse);
+        this.onUpdateApplication(res);
+      });
+  }
+
+  getApplicationLogin(oAuthParams) {
+    AuthBackend.getApplicationLogin(oAuthParams)
+      .then((res) => {
+        if (res.status === "ok") {
+          const application = res.data;
+          this.onUpdateApplication(application);
+        } else {
+          this.onUpdateApplication(null);
+          this.setState({
+            msg: res.msg,
+          });
         }
       });
   }
@@ -126,30 +146,36 @@ class SignupPage extends React.Component {
   }
 
   getApplicationObj() {
-    if (this.props.application !== undefined) {
-      return this.props.application;
-    } else {
-      return this.state.application;
-    }
-  }
-
-  getTermsofuseContent(url) {
-    fetch(url, {
-      method: "GET",
-    }).then(r => {
-      r.text().then(res => {
-        this.setState({termsOfUseContent: res});
-      });
-    });
+    return this.props.application;
   }
 
   onUpdateAccount(account) {
     this.props.onUpdateAccount(account);
   }
 
+  onUpdateApplication(application) {
+    this.props.onUpdateApplication(application);
+  }
+
+  parseOffset(offset) {
+    if (offset === 2 || offset === 4 || Setting.inIframe() || Setting.isMobile()) {
+      return "0 auto";
+    }
+    if (offset === 1) {
+      return "0 10%";
+    }
+    if (offset === 3) {
+      return "0 60%";
+    }
+  }
+
   onFinish(values) {
     const application = this.getApplicationObj();
-    values.phonePrefix = application.organizationObj.phonePrefix;
+
+    const params = new URLSearchParams(window.location.search);
+    values["plan"] = params.get("plan");
+    values["pricing"] = params.get("pricing");
+
     AuthBackend.signup(values)
       .then((res) => {
         if (res.status === "ok") {
@@ -164,7 +190,7 @@ class SignupPage extends React.Component {
                   this.onUpdateAccount(account);
                   Setting.goToLinkSoft(this, this.getResultPath(application));
                 } else {
-                  Setting.showMessage("error", `Failed to sign in: ${res.msg}`);
+                  Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
                 }
               });
           } else {
@@ -181,11 +207,7 @@ class SignupPage extends React.Component {
   }
 
   isProviderVisible(providerItem) {
-    if (this.state.mode === "signup") {
-      return Setting.isProviderVisibleForSignUp(providerItem);
-    } else {
-      return Setting.isProviderVisibleForSignIn(providerItem);
-    }
+    return Setting.isProviderVisibleForSignUp(providerItem);
   }
 
   renderFormItem(application, signupItem) {
@@ -199,7 +221,6 @@ class SignupPage extends React.Component {
       return (
         <Form.Item
           name="username"
-          key="username"
           label={i18next.t("signup:Username")}
           rules={[
             {
@@ -218,7 +239,6 @@ class SignupPage extends React.Component {
           <React.Fragment>
             <Form.Item
               name="firstName"
-              key="firstName"
               label={i18next.t("general:First name")}
               rules={[
                 {
@@ -232,7 +252,6 @@ class SignupPage extends React.Component {
             </Form.Item>
             <Form.Item
               name="lastName"
-              key="lastName"
               label={i18next.t("general:Last name")}
               rules={[
                 {
@@ -251,7 +270,6 @@ class SignupPage extends React.Component {
       return (
         <Form.Item
           name="name"
-          key="name"
           label={(signupItem.rule === "Real name" || signupItem.rule === "First, last") ? i18next.t("general:Real name") : i18next.t("general:Display name")}
           rules={[
             {
@@ -268,7 +286,6 @@ class SignupPage extends React.Component {
       return (
         <Form.Item
           name="affiliation"
-          key="affiliation"
           label={i18next.t("user:Affiliation")}
           rules={[
             {
@@ -285,7 +302,6 @@ class SignupPage extends React.Component {
       return (
         <Form.Item
           name="idCard"
-          key="idCard"
           label={i18next.t("user:ID card")}
           rules={[
             {
@@ -307,7 +323,6 @@ class SignupPage extends React.Component {
       return (
         <Form.Item
           name="country_region"
-          key="region"
           label={i18next.t("user:Country/Region")}
           rules={[
             {
@@ -316,7 +331,7 @@ class SignupPage extends React.Component {
             },
           ]}
         >
-          <SelectRegionBox onChange={(value) => {this.setState({region: value});}} />
+          <RegionSelect onChange={(value) => {this.setState({region: value});}} />
         </Form.Item>
       );
     } else if (signupItem.name === "Email") {
@@ -324,7 +339,6 @@ class SignupPage extends React.Component {
         <React.Fragment>
           <Form.Item
             name="email"
-            key="email"
             label={i18next.t("general:Email")}
             rules={[
               {
@@ -350,15 +364,15 @@ class SignupPage extends React.Component {
             signupItem.rule !== "No verification" &&
             <Form.Item
               name="emailCode"
-              key="emailCode"
               label={i18next.t("code:Email code")}
               rules={[{
                 required: required,
                 message: i18next.t("code:Please input your verification code!"),
               }]}
             >
-              <CountDownInput
+              <SendCodeInput
                 disabled={!this.state.validEmail}
+                method={"signup"}
                 onButtonClickArgs={[this.state.email, "email", Setting.getApplicationName(application)]}
                 application={application}
               />
@@ -369,66 +383,96 @@ class SignupPage extends React.Component {
     } else if (signupItem.name === "Phone") {
       return (
         <React.Fragment>
-          <Form.Item
-            name="phone"
-            key="phone"
-            label={i18next.t("general:Phone")}
-            rules={[
-              {
-                required: required,
-                message: i18next.t("signup:Please input your phone number!"),
-              },
-              {
-                validator: (_, value) => {
-                  if (this.state.phone !== "" && !Setting.isValidPhone(this.state.phone)) {
-                    this.setState({validPhone: false});
-                    return Promise.reject(i18next.t("signup:The input is not valid Phone!"));
-                  }
+          <Form.Item label={i18next.t("general:Phone")} required={required}>
+            <Input.Group compact>
+              <Form.Item
+                name="countryCode"
+                noStyle
+                rules={[
+                  {
+                    required: required,
+                    message: i18next.t("signup:Please select your country code!"),
+                  },
+                ]}
+              >
+                <CountryCodeSelect
+                  style={{width: "35%"}}
+                  countryCodes={this.getApplicationObj().organizationObj.countryCodes}
+                />
+              </Form.Item>
+              <Form.Item
+                name="phone"
+                dependencies={["countryCode"]}
+                noStyle
+                rules={[
+                  {
+                    required: required,
+                    message: i18next.t("signup:Please input your phone number!"),
+                  },
+                  ({getFieldValue}) => ({
+                    validator: (_, value) => {
+                      if (!required && !value) {
+                        return Promise.resolve();
+                      }
 
-                  this.setState({validPhone: true});
-                  return Promise.resolve();
+                      if (value && !Setting.isValidPhone(value, getFieldValue("countryCode"))) {
+                        this.setState({validPhone: false});
+                        return Promise.reject(i18next.t("signup:The input is not valid Phone!"));
+                      }
+
+                      this.setState({validPhone: true});
+                      return Promise.resolve();
+                    },
+                  }),
+                ]}
+              >
+                <Input
+                  style={{width: "65%"}}
+                  onChange={e => this.setState({phone: e.target.value})}
+                />
+              </Form.Item>
+            </Input.Group>
+          </Form.Item>
+          {
+            signupItem.rule !== "No verification" &&
+            <Form.Item
+              name="phoneCode"
+              label={i18next.t("code:Phone code")}
+              rules={[
+                {
+                  required: required,
+                  message: i18next.t("code:Please input your phone verification code!"),
                 },
-              },
-            ]}
-          >
-            <Input
-              style={{
-                width: "100%",
-              }}
-              addonBefore={`+${this.state.application?.organizationObj.phonePrefix}`}
-              onChange={e => this.setState({phone: e.target.value})}
-            />
-          </Form.Item>
-          <Form.Item
-            name="phoneCode"
-            key="phoneCode"
-            label={i18next.t("code:Phone code")}
-            rules={[
-              {
-                required: required,
-                message: i18next.t("code:Please input your phone verification code!"),
-              },
-            ]}
-          >
-            <CountDownInput
-              disabled={!this.state.validPhone}
-              onButtonClickArgs={[this.state.phone, "phone", Setting.getApplicationName(application)]}
-              application={application}
-            />
-          </Form.Item>
+              ]}
+            >
+              <SendCodeInput
+                disabled={!this.state.validPhone}
+                method={"signup"}
+                onButtonClickArgs={[this.state.phone, "phone", Setting.getApplicationName(application)]}
+                application={application}
+                countryCode={this.form.current?.getFieldValue("countryCode")}
+              />
+            </Form.Item>
+          }
         </React.Fragment>
       );
     } else if (signupItem.name === "Password") {
       return (
         <Form.Item
           name="password"
-          key="password"
           label={i18next.t("general:Password")}
           rules={[
             {
               required: required,
-              min: 6,
-              message: i18next.t("login:Please input your password, at least 6 characters!"),
+              validateTrigger: "onChange",
+              validator: (rule, value) => {
+                const errorMsg = PasswordChecker.checkPasswordComplexity(value, application.organizationObj.passwordOptions);
+                if (errorMsg === "") {
+                  return Promise.resolve();
+                } else {
+                  return Promise.reject(errorMsg);
+                }
+              },
             },
           ]}
           hasFeedback
@@ -440,7 +484,6 @@ class SignupPage extends React.Component {
       return (
         <Form.Item
           name="confirm"
-          key="confirm"
           label={i18next.t("signup:Confirm")}
           dependencies={["password"]}
           hasFeedback
@@ -464,60 +507,8 @@ class SignupPage extends React.Component {
         </Form.Item>
       );
     } else if (signupItem.name === "Agreement") {
-      return (
-        <Form.Item
-          name="agreement"
-          key="agreement"
-          valuePropName="checked"
-          rules={[
-            {
-              required: required,
-              message: i18next.t("signup:Please accept the agreement!"),
-            },
-          ]}
-          {...tailFormItemLayout}
-        >
-          <Checkbox>
-            {i18next.t("signup:Accept")}&nbsp;
-            <Link onClick={() => {
-              this.setState({
-                isTermsOfUseVisible: true,
-              });
-            }}>
-              {i18next.t("signup:Terms of Use")}
-            </Link>
-          </Checkbox>
-        </Form.Item>
-      );
+      return AgreementModal.renderAgreementFormItem(application, required, tailFormItemLayout, this);
     }
-  }
-
-  renderModal() {
-    return (
-      <Modal
-        title={i18next.t("signup:Terms of Use")}
-        visible={this.state.isTermsOfUseVisible}
-        width={"55vw"}
-        closable={false}
-        okText={i18next.t("signup:Accept")}
-        cancelText={i18next.t("signup:Decline")}
-        onOk={() => {
-          this.form.current.setFieldsValue({agreement: true});
-          this.setState({
-            isTermsOfUseVisible: false,
-          });
-        }}
-        onCancel={() => {
-          this.form.current.setFieldsValue({agreement: false});
-          this.setState({
-            isTermsOfUseVisible: false,
-          });
-          this.props.history.goBack();
-        }}
-      >
-        <iframe title={"terms"} style={{border: 0, width: "100%", height: "60vh"}} srcDoc={this.state.termsOfUseContent} />
-      </Modal>
-    );
   }
 
   renderForm(application) {
@@ -525,13 +516,13 @@ class SignupPage extends React.Component {
       return (
         <Result
           status="error"
-          title="Sign Up Error"
-          subTitle={"The application does not allow to sign up new account"}
+          title={i18next.t("application:Sign Up Error")}
+          subTitle={i18next.t("application:The application does not allow to sign up new account")}
           extra={[
-            <Button type="primary" key="signin" onClick={() => {
-              Setting.goToLogin(this, application);
-            }}>
-              Sign In
+            <Button type="primary" key="signin" onClick={() => Setting.redirectToLoginPage(application, this.props.history)}>
+              {
+                i18next.t("login:Sign In")
+              }
             </Button>,
           ]}
         >
@@ -548,13 +539,15 @@ class SignupPage extends React.Component {
         initialValues={{
           application: application.name,
           organization: application.organization,
+          countryCode: application.organizationObj.countryCodes?.[0],
         }}
-        style={{width: !Setting.isMobile() ? "400px" : "250px"}}
         size="large"
+        layout={Setting.isMobile() ? "vertical" : "horizontal"}
+        style={{width: Setting.isMobile() ? "300px" : "400px"}}
       >
         <Form.Item
-          style={{height: 0, visibility: "hidden"}}
           name="application"
+          hidden={true}
           rules={[
             {
               required: true,
@@ -564,8 +557,8 @@ class SignupPage extends React.Component {
         >
         </Form.Item>
         <Form.Item
-          style={{height: 0, visibility: "hidden"}}
           name="organization"
+          hidden={true}
           rules={[
             {
               required: true,
@@ -581,13 +574,13 @@ class SignupPage extends React.Component {
           <Button type="primary" htmlType="submit">
             {i18next.t("account:Sign Up")}
           </Button>
-          &nbsp;&nbsp;{i18next.t("signup:Have account?")}&nbsp;
+            &nbsp;&nbsp;{i18next.t("signup:Have account?")}&nbsp;
           <a onClick={() => {
             const linkInStorage = sessionStorage.getItem("signinUrl");
             if (linkInStorage !== null && linkInStorage !== "") {
               Setting.goToLink(linkInStorage);
             } else {
-              Setting.goToLogin(this, application);
+              Setting.redirectToLoginPage(application, this.props.history);
             }
           }}>
             {i18next.t("signup:sign in now")}
@@ -595,7 +588,7 @@ class SignupPage extends React.Component {
         </Form.Item>
         {
           application.providers.filter(providerItem => this.isProviderVisible(providerItem)).map(providerItem => {
-            return ProviderButton.renderProviderLogo(providerItem.provider, application, 30, 5, "small");
+            return ProviderButton.renderProviderLogo(providerItem.provider, application, 30, 5, "small", this.props.location);
           })
         }
       </Form>
@@ -604,7 +597,7 @@ class SignupPage extends React.Component {
 
   render() {
     const application = this.getApplicationObj();
-    if (application === null) {
+    if (application === undefined || application === null) {
       return null;
     }
 
@@ -614,33 +607,33 @@ class SignupPage extends React.Component {
       );
     }
 
-    const formStyle = Setting.inIframe() ? null : Setting.parseObject(application.formCss);
-
     return (
-      <div className="loginBackground" style={{backgroundImage: Setting.inIframe() || Setting.isMobile() ? null : `url(${application.formBackgroundUrl})`}}>
+      <React.Fragment>
         <CustomGithubCorner />
-        &nbsp;
-        <Row>
-          <Col span={8} offset={application.formOffset === 0 || Setting.inIframe() || Setting.isMobile() ? 8 : application.formOffset} style={{display: "flex", justifyContent: "center"}} >
-            <div style={{marginBottom: "10px", textAlign: "center", ...formStyle}}>
+        <div className="login-content" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
+          {Setting.inIframe() || Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCss}} />}
+          {Setting.inIframe() || !Setting.isMobile() ? null : <div dangerouslySetInnerHTML={{__html: application.formCssMobile}} />}
+          <div className="login-panel" >
+            <div className="side-image" style={{display: application.formOffset !== 4 ? "none" : null}}>
+              <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
+            </div>
+            <div className="login-form">
               {
                 Setting.renderHelmet(application)
               }
               {
                 Setting.renderLogo(application)
               }
+              <LanguageSelect languages={application.organizationObj.languages} style={{top: "55px", right: "5px", position: "absolute"}} />
               {
                 this.renderForm(application)
               }
             </div>
-          </Col>
-        </Row>
-        {
-          this.renderModal()
-        }
-      </div>
+          </div>
+        </div>
+      </React.Fragment>
     );
   }
 }
 
-export default SignupPage;
+export default withRouter(SignupPage);

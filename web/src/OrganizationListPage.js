@@ -14,12 +14,13 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Result, Switch, Table} from "antd";
+import {Button, Switch, Table} from "antd";
 import moment from "moment";
 import * as Setting from "./Setting";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
 import i18next from "i18next";
 import BaseListPage from "./BaseListPage";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
 
 class OrganizationListPage extends BaseListPage {
   newOrganization() {
@@ -33,10 +34,12 @@ class OrganizationListPage extends BaseListPage {
       favicon: `${Setting.StaticBaseUrl}/img/favicon.png`,
       passwordType: "plain",
       PasswordSalt: "",
-      phonePrefix: "86",
+      passwordOptions: [],
+      countryCodes: ["US"],
       defaultAvatar: `${Setting.StaticBaseUrl}/img/casbin.svg`,
       defaultApplication: "",
       tags: [],
+      languages: Setting.Countries.map(item => item.key),
       masterPassword: "",
       enableSoftDeletion: false,
       isProfilePublic: true,
@@ -50,22 +53,40 @@ class OrganizationListPage extends BaseListPage {
         {name: "Password", visible: true, viewRule: "Self", modifyRule: "Self"},
         {name: "Email", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Phone", visible: true, viewRule: "Public", modifyRule: "Self"},
+        {name: "Country code", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Country/Region", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Location", visible: true, viewRule: "Public", modifyRule: "Self"},
+        {name: "Address", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Affiliation", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Title", visible: true, viewRule: "Public", modifyRule: "Self"},
+        {name: "ID card type", visible: true, viewRule: "Public", modifyRule: "Self"},
+        {name: "ID card", visible: true, viewRule: "Public", modifyRule: "Self"},
+        {name: "ID card info", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Homepage", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Bio", visible: true, viewRule: "Public", modifyRule: "Self"},
         {name: "Tag", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Language", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Gender", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Birthday", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Education", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Score", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Karma", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "Ranking", visible: true, viewRule: "Public", modifyRule: "Admin"},
         {name: "Signup application", visible: true, viewRule: "Public", modifyRule: "Admin"},
+        {name: "API key", label: i18next.t("general:API key"), modifyRule: "Self"},
+        {name: "Groups", visible: true, viewRule: "Public", modifyRule: "Admin"},
         {name: "Roles", visible: true, viewRule: "Public", modifyRule: "Immutable"},
         {name: "Permissions", visible: true, viewRule: "Public", modifyRule: "Immutable"},
         {name: "3rd-party logins", visible: true, viewRule: "Self", modifyRule: "Self"},
         {name: "Properties", visible: false, viewRule: "Admin", modifyRule: "Admin"},
+        {name: "Is online", visible: true, viewRule: "Admin", modifyRule: "Admin"},
         {name: "Is admin", visible: true, viewRule: "Admin", modifyRule: "Admin"},
         {name: "Is global admin", visible: true, viewRule: "Admin", modifyRule: "Admin"},
         {name: "Is forbidden", visible: true, viewRule: "Admin", modifyRule: "Admin"},
         {name: "Is deleted", visible: true, viewRule: "Admin", modifyRule: "Admin"},
+        {Name: "Multi-factor authentication", Visible: true, ViewRule: "Self", ModifyRule: "Self"},
+        {Name: "WebAuthn credentials", Visible: true, ViewRule: "Self", ModifyRule: "Self"},
+        {Name: "Managed accounts", Visible: true, ViewRule: "Self", ModifyRule: "Self"},
       ],
     };
   }
@@ -74,26 +95,37 @@ class OrganizationListPage extends BaseListPage {
     const newOrganization = this.newOrganization();
     OrganizationBackend.addOrganization(newOrganization)
       .then((res) => {
-        this.props.history.push({pathname: `/organizations/${newOrganization.name}`, mode: "add"});
-      }
-      )
+        if (res.status === "ok") {
+          this.props.history.push({pathname: `/organizations/${newOrganization.name}`, mode: "add"});
+          Setting.showMessage("success", i18next.t("general:Successfully added"));
+          window.dispatchEvent(new Event("storageOrganizationsChanged"));
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to add")}: ${res.msg}`);
+        }
+      })
       .catch(error => {
-        Setting.showMessage("error", `Organization failed to add: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deleteOrganization(i) {
     OrganizationBackend.deleteOrganization(this.state.data[i])
       .then((res) => {
-        Setting.showMessage("success", "Organization deleted successfully");
-        this.setState({
-          data: Setting.deleteRow(this.state.data, i),
-          pagination: {total: this.state.pagination.total - 1},
-        });
-      }
-      )
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully deleted"));
+          this.setState({
+            data: Setting.deleteRow(this.state.data, i),
+            pagination: {
+              ...this.state.pagination,
+              total: this.state.pagination.total - 1},
+          });
+          window.dispatchEvent(new Event("storageOrganizationsChanged"));
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
+      })
       .catch(error => {
-        Setting.showMessage("error", `Organization failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
@@ -134,7 +166,7 @@ class OrganizationListPage extends BaseListPage {
         ...this.getColumnSearchProps("displayName"),
       },
       {
-        title: i18next.t("organization:Favicon"),
+        title: i18next.t("general:Favicon"),
         dataIndex: "favicon",
         key: "favicon",
         width: "50px",
@@ -183,7 +215,7 @@ class OrganizationListPage extends BaseListPage {
         ...this.getColumnSearchProps("passwordSalt"),
       },
       {
-        title: i18next.t("organization:Default avatar"),
+        title: i18next.t("general:Default avatar"),
         dataIndex: "defaultAvatar",
         key: "defaultAvatar",
         width: "120px",
@@ -211,20 +243,20 @@ class OrganizationListPage extends BaseListPage {
         title: i18next.t("general:Action"),
         dataIndex: "",
         key: "op",
-        width: "240px",
+        width: "320px",
         fixed: (Setting.isMobile()) ? "false" : "right",
         render: (text, record, index) => {
           return (
             <div>
+              <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary" onClick={() => this.props.history.push(`/trees/${record.name}`)}>{i18next.t("general:Groups")}</Button>
               <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary" onClick={() => this.props.history.push(`/organizations/${record.name}/users`)}>{i18next.t("general:Users")}</Button>
               <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} onClick={() => this.props.history.push(`/organizations/${record.name}`)}>{i18next.t("general:Edit")}</Button>
-              <Popconfirm
-                title={`Sure to delete organization: ${record.name} ?`}
+              <PopconfirmModal
+                title={i18next.t("general:Sure to delete") + `: ${record.name} ?`}
                 onConfirm={() => this.deleteOrganization(index)}
                 disabled={record.name === "built-in"}
               >
-                <Button style={{marginBottom: "10px"}} disabled={record.name === "built-in"} type="danger">{i18next.t("general:Delete")}</Button>
-              </Popconfirm>
+              </PopconfirmModal>
             </div>
           );
         },
@@ -238,24 +270,13 @@ class OrganizationListPage extends BaseListPage {
       showTotal: () => i18next.t("general:{total} in total").replace("{total}", this.state.pagination.total),
     };
 
-    if (!this.state.isAuthorized) {
-      return (
-        <Result
-          status="403"
-          title="403 Unauthorized"
-          subTitle={i18next.t("general:Sorry, you do not have permission to access this page.")}
-          extra={<a href="/"><Button type="primary">{i18next.t("general:Back Home")}</Button></a>}
-        />
-      );
-    }
-
     return (
       <div>
         <Table scroll={{x: "max-content"}} columns={columns} dataSource={organizations} rowKey="name" size="middle" bordered pagination={paginationProps}
           title={() => (
             <div>
               {i18next.t("general:Organizations")}&nbsp;&nbsp;&nbsp;&nbsp;
-              <Button type="primary" size="small" onClick={this.addOrganization.bind(this)}>{i18next.t("general:Add")}</Button>
+              <Button type="primary" size="small" disabled={!Setting.isAdminUser(this.props.account)} onClick={this.addOrganization.bind(this)}>{i18next.t("general:Add")}</Button>
             </div>
           )}
           loading={this.state.loading}
@@ -273,11 +294,13 @@ class OrganizationListPage extends BaseListPage {
       value = params.passwordType;
     }
     this.setState({loading: true});
-    OrganizationBackend.getOrganizations("admin", params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+    OrganizationBackend.getOrganizations("admin", Setting.isDefaultOrganizationSelected(this.props.account) ? "" : Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
       .then((res) => {
+        this.setState({
+          loading: false,
+        });
         if (res.status === "ok") {
           this.setState({
-            loading: false,
             data: res.data,
             pagination: {
               ...params.pagination,
@@ -287,11 +310,12 @@ class OrganizationListPage extends BaseListPage {
             searchedColumn: params.searchedColumn,
           });
         } else {
-          if (res.msg.includes("Unauthorized")) {
+          if (Setting.isResponseDenied(res)) {
             this.setState({
-              loading: false,
               isAuthorized: false,
             });
+          } else {
+            Setting.showMessage("error", res.msg);
           }
         }
       });

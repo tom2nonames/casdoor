@@ -37,21 +37,19 @@
   <a href="https://crowdin.com/project/casdoor-site">
     <img alt="Crowdin" src="https://badges.crowdin.net/casdoor-site/localized.svg">
   </a>
-  <a href="https://gitter.im/casbin/casdoor">
-    <img alt="Gitter" src="https://badges.gitter.im/casbin/casdoor.svg">
+  <a href="https://discord.gg/5rPsrAzK7S">
+    <img alt="Discord" src="https://img.shields.io/discord/1022748306096537660?style=flat-square&logo=discord&label=discord&color=5865F2">
   </a>
 </p>
 
 ## Online demo
 
-- International: https://door.casdoor.org (read-only)
-- Asian mirror: https://door.casdoor.com (read-only)
-- Asian mirror: https://demo.casdoor.com (read-write, will restore for every 5 minutes)
+- Read-only site: https://door.casdoor.com (any modification operation will fail)
+- Writable site: https://demo.casdoor.com (original data will be restored for every 5 minutes)
 
 ## Documentation
 
-- International: https://casdoor.org
-- Asian mirror: https://docs.casdoor.cn
+https://casdoor.org
 
 ## Install
 
@@ -69,11 +67,11 @@ https://casdoor.org/docs/how-to-connect/overview
 
 ## Integrations
 
-https://casdoor.org/docs/integration/apisix
+https://casdoor.org/docs/category/integrations
 
 ## How to contact?
 
-- Gitter: https://gitter.im/casbin/casdoor
+- Discord: https://discord.gg/5rPsrAzK7S
 - Forum: https://forum.casbin.com
 - Contact: https://tawk.to/chat/623352fea34c2456412b8c51/1fuc7od6e
 

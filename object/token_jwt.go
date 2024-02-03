@@ -24,9 +24,11 @@ import (
 
 type Claims struct {
 	*User
-	Nonce string `json:"nonce,omitempty"`
-	Tag   string `json:"tag,omitempty"`
-	Scope string `json:"scope,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	TokenType string `json:"tokenType,omitempty"`
+	Nonce     string `json:"nonce,omitempty"`
+	Tag       string `json:"tag,omitempty"`
+	Scope     string `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -35,10 +37,76 @@ type UserShort struct {
 	Name  string `xorm:"varchar(100) notnull pk" json:"name"`
 }
 
+type UserWithoutThirdIdp struct {
+	Owner               string            `xorm:"varchar(100) notnull pk" json:"owner"`
+	Name                string            `xorm:"varchar(100) notnull pk" json:"name"`
+	CreatedTime         string            `xorm:"varchar(100)" json:"createdTime"`
+	UpdatedTime         string            `xorm:"varchar(100)" json:"updatedTime"`
+	Id                  string            `xorm:"varchar(100) index" json:"id"`
+	Type                string            `xorm:"varchar(100)" json:"type"`
+	Password            string            `xorm:"varchar(100)" json:"password"`
+	PasswordSalt        string            `xorm:"varchar(100)" json:"passwordSalt"`
+	DisplayName         string            `xorm:"varchar(100)" json:"displayName"`
+	FirstName           string            `xorm:"varchar(100)" json:"firstName"`
+	LastName            string            `xorm:"varchar(100)" json:"lastName"`
+	Avatar              string            `xorm:"varchar(500)" json:"avatar"`
+	PermanentAvatar     string            `xorm:"varchar(500)" json:"permanentAvatar"`
+	Email               string            `xorm:"varchar(100) index" json:"email"`
+	EmailVerified       bool              `json:"emailVerified"`
+	Phone               string            `xorm:"varchar(100) index" json:"phone"`
+	Location            string            `xorm:"varchar(100)" json:"location"`
+	Address             []string          `json:"address"`
+	Affiliation         string            `xorm:"varchar(100)" json:"affiliation"`
+	Title               string            `xorm:"varchar(100)" json:"title"`
+	IdCardType          string            `xorm:"varchar(100)" json:"idCardType"`
+	IdCard              string            `xorm:"varchar(100) index" json:"idCard"`
+	Homepage            string            `xorm:"varchar(100)" json:"homepage"`
+	Bio                 string            `xorm:"varchar(100)" json:"bio"`
+	Tag                 string            `xorm:"varchar(100)" json:"tag"`
+	Region              string            `xorm:"varchar(100)" json:"region"`
+	Language            string            `xorm:"varchar(100)" json:"language"`
+	Gender              string            `xorm:"varchar(100)" json:"gender"`
+	Birthday            string            `xorm:"varchar(100)" json:"birthday"`
+	Education           string            `xorm:"varchar(100)" json:"education"`
+	Score               int               `json:"score"`
+	Karma               int               `json:"karma"`
+	Ranking             int               `json:"ranking"`
+	IsDefaultAvatar     bool              `json:"isDefaultAvatar"`
+	IsOnline            bool              `json:"isOnline"`
+	IsAdmin             bool              `json:"isAdmin"`
+	IsGlobalAdmin       bool              `json:"isGlobalAdmin"`
+	IsForbidden         bool              `json:"isForbidden"`
+	IsDeleted           bool              `json:"isDeleted"`
+	SignupApplication   string            `xorm:"varchar(100)" json:"signupApplication"`
+	Hash                string            `xorm:"varchar(100)" json:"hash"`
+	PreHash             string            `xorm:"varchar(100)" json:"preHash"`
+	CreatedIp           string            `xorm:"varchar(100)" json:"createdIp"`
+	LastSigninTime      string            `xorm:"varchar(100)" json:"lastSigninTime"`
+	LastSigninIp        string            `xorm:"varchar(100)" json:"lastSigninIp"`
+	Ldap                string            `xorm:"ldap varchar(100)" json:"ldap"`
+	Properties          map[string]string `json:"properties"`
+	Roles               []*Role           `xorm:"-" json:"roles"`
+	Permissions         []*Permission     `xorm:"-" json:"permissions"`
+	LastSigninWrongTime string            `xorm:"varchar(100)" json:"lastSigninWrongTime"`
+	SigninWrongTimes    int               `json:"signinWrongTimes"`
+}
+
 type ClaimsShort struct {
 	*UserShort
-	Nonce string `json:"nonce,omitempty"`
-	Scope string `json:"scope,omitempty"`
+	SessionID string `json:"session_id,omitempty"`
+	TokenType string `json:"tokenType,omitempty"`
+	Nonce     string `json:"nonce,omitempty"`
+	Scope     string `json:"scope,omitempty"`
+	jwt.RegisteredClaims
+}
+
+type ClaimsWithoutThirdIdp struct {
+	*UserWithoutThirdIdp
+	SessionID string `json:"session_id,omitempty"`
+	TokenType string `json:"tokenType,omitempty"`
+	Nonce     string `json:"nonce,omitempty"`
+	Tag       string `json:"tag,omitempty"`
+	Scope     string `json:"scope,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -50,9 +118,74 @@ func getShortUser(user *User) *UserShort {
 	return res
 }
 
+func getUserWithoutThirdIdp(user *User) *UserWithoutThirdIdp {
+	res := &UserWithoutThirdIdp{
+		Owner:       user.Owner,
+		Name:        user.Name,
+		CreatedTime: user.CreatedTime,
+		UpdatedTime: user.UpdatedTime,
+
+		Id:                user.Id,
+		Type:              user.Type,
+		Password:          user.Password,
+		PasswordSalt:      user.PasswordSalt,
+		DisplayName:       user.DisplayName,
+		FirstName:         user.FirstName,
+		LastName:          user.LastName,
+		Avatar:            user.Avatar,
+		PermanentAvatar:   user.PermanentAvatar,
+		Email:             user.Email,
+		EmailVerified:     user.EmailVerified,
+		Phone:             user.Phone,
+		Location:          user.Location,
+		Address:           user.Address,
+		Affiliation:       user.Affiliation,
+		Title:             user.Title,
+		IdCardType:        user.IdCardType,
+		IdCard:            user.IdCard,
+		Homepage:          user.Homepage,
+		Bio:               user.Bio,
+		Tag:               user.Tag,
+		Region:            user.Region,
+		Language:          user.Language,
+		Gender:            user.Gender,
+		Birthday:          user.Birthday,
+		Education:         user.Education,
+		Score:             user.Score,
+		Karma:             user.Karma,
+		Ranking:           user.Ranking,
+		IsDefaultAvatar:   user.IsDefaultAvatar,
+		IsOnline:          user.IsOnline,
+		IsAdmin:           user.IsAdmin,
+		IsGlobalAdmin:     user.IsGlobalAdmin,
+		IsForbidden:       user.IsForbidden,
+		IsDeleted:         user.IsDeleted,
+		SignupApplication: user.SignupApplication,
+		Hash:              user.Hash,
+		PreHash:           user.PreHash,
+
+		CreatedIp:      user.CreatedIp,
+		LastSigninTime: user.LastSigninTime,
+		LastSigninIp:   user.LastSigninIp,
+
+		Ldap:       user.Ldap,
+		Properties: user.Properties,
+
+		Roles:       user.Roles,
+		Permissions: user.Permissions,
+
+		LastSigninWrongTime: user.LastSigninWrongTime,
+		SigninWrongTimes:    user.SigninWrongTimes,
+	}
+
+	return res
+}
+
 func getShortClaims(claims Claims) ClaimsShort {
 	res := ClaimsShort{
 		UserShort:        getShortUser(claims.User),
+		SessionID:        claims.SessionID,
+		TokenType:        claims.TokenType,
 		Nonce:            claims.Nonce,
 		Scope:            claims.Scope,
 		RegisteredClaims: claims.RegisteredClaims,
@@ -60,20 +193,61 @@ func getShortClaims(claims Claims) ClaimsShort {
 	return res
 }
 
-func generateJwtToken(application *Application, user *User, nonce string, scope string, host string) (string, string, string, error) {
+func getClaimsWithoutThirdIdp(claims Claims) ClaimsWithoutThirdIdp {
+	res := ClaimsWithoutThirdIdp{
+		UserWithoutThirdIdp: getUserWithoutThirdIdp(claims.User),
+		SessionID:           claims.SessionID,
+		TokenType:           claims.TokenType,
+		Nonce:               claims.Nonce,
+		Tag:                 claims.Tag,
+		Scope:               claims.Scope,
+		RegisteredClaims:    claims.RegisteredClaims,
+	}
+	return res
+}
+
+func refineUser(user *User) *User {
+	user.Password = ""
+
+	if user.Address == nil {
+		user.Address = []string{}
+	}
+	if user.Properties == nil {
+		user.Properties = map[string]string{}
+	}
+	if user.Roles == nil {
+		user.Roles = []*Role{}
+	}
+	if user.Permissions == nil {
+		user.Permissions = []*Permission{}
+	}
+	if user.Groups == nil {
+		user.Groups = []string{}
+	}
+
+	return user
+}
+
+func generateJwtToken(application *Application, user *User, nonce string, scope string, host string, sessionID string) (string, string, string, error) {
 	nowTime := time.Now()
 	expireTime := nowTime.Add(time.Duration(application.ExpireInHours) * time.Hour)
 	refreshExpireTime := nowTime.Add(time.Duration(application.RefreshExpireInHours) * time.Hour)
+	if application.RefreshExpireInHours == 0 {
+		refreshExpireTime = expireTime
+	}
 
-	user.Password = ""
+	user = refineUser(user)
+
 	_, originBackend := getOriginFromHost(host)
 
 	name := util.GenerateId()
-	jti := fmt.Sprintf("%s/%s", application.Owner, name)
+	jti := util.GetId(application.Owner, name)
 
 	claims := Claims{
-		User:  user,
-		Nonce: nonce,
+		User:      user,
+		SessionID: sessionID,
+		TokenType: "access-token",
+		Nonce:     nonce,
 		// FIXME: A workaround for custom claim by reusing `tag` in user info
 		Tag:   user.Tag,
 		Scope: scope,
@@ -97,14 +271,21 @@ func generateJwtToken(application *Application, user *User, nonce string, scope 
 
 		token = jwt.NewWithClaims(jwt.SigningMethodRS256, claimsShort)
 		claimsShort.ExpiresAt = jwt.NewNumericDate(refreshExpireTime)
+		claimsShort.TokenType = "refresh-token"
 		refreshToken = jwt.NewWithClaims(jwt.SigningMethodRS256, claimsShort)
 	} else {
-		token = jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-		claims.ExpiresAt = jwt.NewNumericDate(refreshExpireTime)
-		refreshToken = jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+		claimsWithoutThirdIdp := getClaimsWithoutThirdIdp(claims)
+
+		token = jwt.NewWithClaims(jwt.SigningMethodRS256, claimsWithoutThirdIdp)
+		claimsWithoutThirdIdp.ExpiresAt = jwt.NewNumericDate(refreshExpireTime)
+		claimsWithoutThirdIdp.TokenType = "refresh-token"
+		refreshToken = jwt.NewWithClaims(jwt.SigningMethodRS256, claimsWithoutThirdIdp)
 	}
 
-	cert := getCertByApplication(application)
+	cert, err := getCertByApplication(application)
+	if err != nil {
+		return "", "", "", err
+	}
 
 	// RSA private key
 	key, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(cert.PrivateKey))
@@ -147,5 +328,10 @@ func ParseJwtToken(token string, cert *Cert) (*Claims, error) {
 }
 
 func ParseJwtTokenByApplication(token string, application *Application) (*Claims, error) {
-	return ParseJwtToken(token, getCertByApplication(application))
+	cert, err := getCertByApplication(application)
+	if err != nil {
+		return nil, err
+	}
+
+	return ParseJwtToken(token, cert)
 }

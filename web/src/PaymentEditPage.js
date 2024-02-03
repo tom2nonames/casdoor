@@ -42,6 +42,11 @@ class PaymentEditPage extends React.Component {
   getPayment() {
     PaymentBackend.getPayment("admin", this.state.paymentName)
       .then((payment) => {
+        if (payment === null) {
+          this.props.history.push("/404");
+          return;
+        }
+
         this.setState({
           payment: payment,
         });
@@ -78,7 +83,7 @@ class PaymentEditPage extends React.Component {
         this.setState({
           isInvoiceLoading: false,
         });
-        if (res.msg === "") {
+        if (res.status === "ok") {
           Setting.showMessage("success", "Successfully invoiced");
           Setting.openLinkSafe(res.data);
           this.getPayment();
@@ -90,7 +95,7 @@ class PaymentEditPage extends React.Component {
         this.setState({
           isInvoiceLoading: false,
         });
-        Setting.showMessage("error", `Failed to connect to server: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
@@ -117,7 +122,7 @@ class PaymentEditPage extends React.Component {
           {" " + i18next.t("payment:Confirm your invoice information")}
         </div>
       }
-      visible={this.state.isModalVisible}
+      open={this.state.isModalVisible}
       onOk={handleIssueInvoice}
       onCancel={handleCancel}
       okText={i18next.t("payment:Issue Invoice")}
@@ -133,7 +138,7 @@ class PaymentEditPage extends React.Component {
             <Descriptions.Item label={i18next.t("payment:Person ID card")} span={3}>{this.state.payment?.personIdCard}</Descriptions.Item>
             <Descriptions.Item label={i18next.t("payment:Person Email")} span={3}>{this.state.payment?.personEmail}</Descriptions.Item>
             <Descriptions.Item label={i18next.t("payment:Person phone")} span={3}>{this.state.payment?.personPhone}</Descriptions.Item>
-            <Descriptions.Item label={i18next.t("payment:Invoice type")} span={3}>{this.state.payment?.invoiceType === "Individual" ? i18next.t("payment:Individual") : i18next.t("payment:Organization")}</Descriptions.Item>
+            <Descriptions.Item label={i18next.t("payment:Invoice type")} span={3}>{this.state.payment?.invoiceType === "Individual" ? i18next.t("payment:Individual") : i18next.t("general:Organization")}</Descriptions.Item>
             <Descriptions.Item label={i18next.t("payment:Invoice title")} span={3}>{this.state.payment?.invoiceTitle}</Descriptions.Item>
             <Descriptions.Item label={i18next.t("payment:Invoice tax ID")} span={3}>{this.state.payment?.invoiceTaxId}</Descriptions.Item>
             <Descriptions.Item label={i18next.t("payment:Invoice remark")} span={3}>{this.state.payment?.invoiceRemark}</Descriptions.Item>
@@ -195,7 +200,7 @@ class PaymentEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("payment:Type"), i18next.t("payment:Type - Tooltip"))} :
+            {Setting.getLabel(i18next.t("provider:Type"), i18next.t("payment:Type - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input disabled={true} value={this.state.payment.type} onChange={e => {
@@ -215,7 +220,7 @@ class PaymentEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("payment:Price"), i18next.t("payment:Price - Tooltip"))} :
+            {Setting.getLabel(i18next.t("product:Price"), i18next.t("product:Price - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input disabled={true} value={this.state.payment.price} onChange={e => {
@@ -235,7 +240,7 @@ class PaymentEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
-            {Setting.getLabel(i18next.t("payment:State"), i18next.t("payment:State - Tooltip"))} :
+            {Setting.getLabel(i18next.t("general:State"), i18next.t("general:State - Tooltip"))} :
           </Col>
           <Col span={22} >
             <Input disabled={true} value={this.state.payment.state} onChange={e => {
@@ -302,7 +307,7 @@ class PaymentEditPage extends React.Component {
             {Setting.getLabel(i18next.t("payment:Invoice type"), i18next.t("payment:Invoice type - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select disabled={this.state.payment.invoiceUrl !== ""} virtual={false} style={{width: "100%"}} value={this.state.payment.invoiceType} onChange={(value => {
+            <Select virtual={false} disabled={this.state.payment.invoiceUrl !== ""} style={{width: "100%"}} value={this.state.payment.invoiceType} onChange={(value => {
               this.updatePaymentField("invoiceType", value);
               if (value === "Individual") {
                 this.updatePaymentField("invoiceTitle", this.state.payment.personName);
@@ -312,7 +317,7 @@ class PaymentEditPage extends React.Component {
               {
                 [
                   {id: "Individual", name: i18next.t("payment:Individual")},
-                  {id: "Organization", name: i18next.t("payment:Organization")},
+                  {id: "Organization", name: i18next.t("general:Organization")},
                 ].map((item, index) => <Option key={index} value={item.id}>{item.name}</Option>)
               }
             </Select>
@@ -443,8 +448,8 @@ class PaymentEditPage extends React.Component {
     const payment = Setting.deepCopy(this.state.payment);
     PaymentBackend.updatePayment(this.state.payment.owner, this.state.paymentName, payment)
       .then((res) => {
-        if (res.msg === "") {
-          Setting.showMessage("success", "Successfully saved");
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             paymentName: this.state.payment.name,
           });
@@ -455,22 +460,26 @@ class PaymentEditPage extends React.Component {
             this.props.history.push(`/payments/${this.state.payment.name}`);
           }
         } else {
-          Setting.showMessage("error", res.msg);
+          Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
           this.updatePaymentField("name", this.state.paymentName);
         }
       })
       .catch(error => {
-        Setting.showMessage("error", `Failed to connect to server: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deletePayment() {
     PaymentBackend.deletePayment(this.state.payment)
-      .then(() => {
-        this.props.history.push("/payments");
+      .then((res) => {
+        if (res.status === "ok") {
+          this.props.history.push("/payments");
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
       })
       .catch(error => {
-        Setting.showMessage("error", `Payment failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 

@@ -13,9 +13,11 @@
 // limitations under the License.
 
 import React from "react";
-import {Button, Input, Space} from "antd";
+import {Button, Input, Result, Space} from "antd";
 import {SearchOutlined} from "@ant-design/icons";
 import Highlighter from "react-highlight-words";
+import i18next from "i18next";
+import * as Setting from "./Setting";
 
 class BaseListPage extends React.Component {
   constructor(props) {
@@ -32,6 +34,22 @@ class BaseListPage extends React.Component {
       searchedColumn: "",
       isAuthorized: true,
     };
+  }
+
+  handleOrganizationChange = () => {
+    const {pagination} = this.state;
+    this.fetch({pagination});
+  };
+
+  componentDidMount() {
+    window.addEventListener("storageOrganizationChanged", this.handleOrganizationChange);
+    if (!Setting.isAdminUser(this.props.account)) {
+      Setting.setOrganization("All");
+    }
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener("storageOrganizationChanged", this.handleOrganizationChange);
   }
 
   UNSAFE_componentWillMount() {
@@ -87,7 +105,7 @@ class BaseListPage extends React.Component {
       record[dataIndex]
         ? record[dataIndex].toString().toLowerCase().includes(value.toLowerCase())
         : "",
-    onFilterDropdownVisibleChange: visible => {
+    onFilterDropdownOpenChange: visible => {
       if (visible) {
         setTimeout(() => this.searchInput.select(), 100);
       }
@@ -127,6 +145,17 @@ class BaseListPage extends React.Component {
   };
 
   render() {
+    if (!this.state.isAuthorized) {
+      return (
+        <Result
+          status="403"
+          title="403 Unauthorized"
+          subTitle={i18next.t("general:Sorry, you do not have permission to access this page or logged in status invalid.")}
+          extra={<a href="/"><Button type="primary">{i18next.t("general:Back Home")}</Button></a>}
+        />
+      );
+    }
+
     return (
       <div>
         {

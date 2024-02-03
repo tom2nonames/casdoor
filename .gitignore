@@ -27,3 +27,8 @@ logs/
 files/
 lastupdate.tmp
 commentsRouter*.go
+
+# ignore build result
+casdoor
+server_linux_arm64
+server_linux_amd64

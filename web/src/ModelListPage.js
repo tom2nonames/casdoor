@@ -14,22 +14,39 @@
 
 import React from "react";
 import {Link} from "react-router-dom";
-import {Button, Popconfirm, Switch, Table} from "antd";
+import {Button, Switch, Table} from "antd";
 import moment from "moment";
 import * as Setting from "./Setting";
 import * as ModelBackend from "./backend/ModelBackend";
 import i18next from "i18next";
 import BaseListPage from "./BaseListPage";
+import PopconfirmModal from "./common/modal/PopconfirmModal";
+
+const rbacModel = `[request_definition]
+r = sub, obj, act
+
+[policy_definition]
+p = sub, obj, act
+
+[role_definition]
+g = _, _
+
+[policy_effect]
+e = some(where (p.eft == allow))
+
+[matchers]
+m = g(r.sub, p.sub) && r.obj == p.obj && r.act == p.act`;
 
 class ModelListPage extends BaseListPage {
   newModel() {
     const randomName = Setting.getRandomName();
+    const owner = Setting.getRequestOrganization(this.props.account);
     return {
-      owner: "built-in",
+      owner: owner,
       name: `model_${randomName}`,
       createdTime: moment().format(),
       displayName: `New Model - ${randomName}`,
-      modelText: "",
+      modelText: rbacModel,
       isEnabled: true,
     };
   }
@@ -38,46 +55,38 @@ class ModelListPage extends BaseListPage {
     const newModel = this.newModel();
     ModelBackend.addModel(newModel)
       .then((res) => {
-        this.props.history.push({pathname: `/models/${newModel.owner}/${newModel.name}`, mode: "add"});
-      }
-      )
+        if (res.status === "ok") {
+          this.props.history.push({pathname: `/models/${newModel.owner}/${newModel.name}`, mode: "add"});
+          Setting.showMessage("success", i18next.t("general:Successfully added"));
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to add")}: ${res.msg}`);
+        }
+      })
       .catch(error => {
-        Setting.showMessage("error", `Model failed to add: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deleteModel(i) {
     ModelBackend.deleteModel(this.state.data[i])
       .then((res) => {
-        Setting.showMessage("success", "Model deleted successfully");
-        this.setState({
-          data: Setting.deleteRow(this.state.data, i),
-          pagination: {total: this.state.pagination.total - 1},
-        });
-      }
-      )
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully deleted"));
+          this.setState({
+            data: Setting.deleteRow(this.state.data, i),
+            pagination: {total: this.state.pagination.total - 1},
+          });
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
+      })
       .catch(error => {
-        Setting.showMessage("error", `Model failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   renderTable(models) {
     const columns = [
-      {
-        title: i18next.t("general:Organization"),
-        dataIndex: "owner",
-        key: "owner",
-        width: "120px",
-        sorter: true,
-        ...this.getColumnSearchProps("owner"),
-        render: (text, record, index) => {
-          return (
-            <Link to={`/organizations/${text}`}>
-              {text}
-            </Link>
-          );
-        },
-      },
       {
         title: i18next.t("general:Name"),
         dataIndex: "name",
@@ -89,6 +98,21 @@ class ModelListPage extends BaseListPage {
         render: (text, record, index) => {
           return (
             <Link to={`/models/${record.owner}/${text}`}>
+              {text}
+            </Link>
+          );
+        },
+      },
+      {
+        title: i18next.t("general:Organization"),
+        dataIndex: "owner",
+        key: "owner",
+        width: "120px",
+        sorter: true,
+        ...this.getColumnSearchProps("owner"),
+        render: (text, record, index) => {
+          return (
+            <Link to={`/organizations/${text}`}>
               {text}
             </Link>
           );
@@ -135,12 +159,11 @@ class ModelListPage extends BaseListPage {
             <div>
               <Button style={{marginTop: "10px", marginBottom: "10px", marginRight: "10px"}} type="primary"
                 onClick={() => this.props.history.push(`/models/${record.owner}/${record.name}`)}>{i18next.t("general:Edit")}</Button>
-              <Popconfirm
-                title={`Sure to delete model: ${record.name} ?`}
+              <PopconfirmModal
+                title={i18next.t("general:Sure to delete") + `: ${record.name} ?`}
                 onConfirm={() => this.deleteModel(index)}
               >
-                <Button style={{marginBottom: "10px"}} type="danger">{i18next.t("general:Delete")}</Button>
-              </Popconfirm>
+              </PopconfirmModal>
             </div>
           );
         },
@@ -156,7 +179,7 @@ class ModelListPage extends BaseListPage {
 
     return (
       <div>
-        <Table scroll={{x: "max-content"}} columns={columns} dataSource={models} rowKey="name" size="middle" bordered
+        <Table scroll={{x: "max-content"}} columns={columns} dataSource={models} rowKey={(record) => `${record.owner}/${record.name}`} size="middle" bordered
           pagination={paginationProps}
           title={() => (
             <div>
@@ -180,11 +203,13 @@ class ModelListPage extends BaseListPage {
       value = params.type;
     }
     this.setState({loading: true});
-    ModelBackend.getModels("", params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
+    ModelBackend.getModels(Setting.isDefaultOrganizationSelected(this.props.account) ? "" : Setting.getRequestOrganization(this.props.account), params.pagination.current, params.pagination.pageSize, field, value, sortField, sortOrder)
       .then((res) => {
+        this.setState({
+          loading: false,
+        });
         if (res.status === "ok") {
           this.setState({
-            loading: false,
             data: res.data,
             pagination: {
               ...params.pagination,
@@ -193,6 +218,14 @@ class ModelListPage extends BaseListPage {
             searchText: params.searchText,
             searchedColumn: params.searchedColumn,
           });
+        } else {
+          if (Setting.isResponseDenied(res)) {
+            this.setState({
+              isAuthorized: false,
+            });
+          } else {
+            Setting.showMessage("error", res.msg);
+          }
         }
       });
   };

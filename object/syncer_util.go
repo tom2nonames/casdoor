@@ -170,6 +170,7 @@ func (syncer *Syncer) getOriginalUsersFromMap(results []map[string]string) []*Or
 		originalUser := &OriginalUser{
 			Address:    []string{},
 			Properties: map[string]string{},
+			Groups:     []string{},
 		}
 
 		for _, tableColumn := range syncer.TableColumns {
@@ -190,6 +191,22 @@ func (syncer *Syncer) getOriginalUsersFromMap(results []map[string]string) []*Or
 				value = result[tableColumnName]
 			}
 			syncer.setUserByKeyValue(originalUser, tableColumn.CasdoorName, value)
+			//来自go-ldap-admin的数据 同步钉钉的信息
+			v, ok := result["source"]
+			if ok && v == "dingtalk" && syncer.Database == "go_ldap_admin" && syncer.Table == "users_dingtalk" {
+				originalUser.DingTalk = result["source_user_id"]
+				originalUser.Properties["oauth_DingTalk_username"] = result["nickname"]
+				originalUser.Properties["oauth_DingTalk_displayName"] = result["nickname"]
+				originalUser.Properties["oauth_DingTalk_id"] = result["source_user_id"]
+				originalUser.Properties["oauth_DingTalk_unionId"] = result["source_union_id"]
+
+				//离职员工禁用用户
+				//originalUser.IsForbidden = false
+				v, ok = result["status"]
+				if ok && v == "2" {
+					originalUser.IsForbidden = true
+				}
+			}
 		}
 
 		if syncer.Type == "Keycloak" {

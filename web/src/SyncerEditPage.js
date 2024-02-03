@@ -19,7 +19,7 @@ import * as SyncerBackend from "./backend/SyncerBackend";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
 import * as Setting from "./Setting";
 import i18next from "i18next";
-import SyncerTableColumnTable from "./SyncerTableColumnTable";
+import SyncerTableColumnTable from "./table/SyncerTableColumnTable";
 
 import {Controlled as CodeMirror} from "react-codemirror2";
 import "codemirror/lib/codemirror.css";
@@ -47,9 +47,19 @@ class SyncerEditPage extends React.Component {
 
   getSyncer() {
     SyncerBackend.getSyncer("admin", this.state.syncerName)
-      .then((syncer) => {
+      .then((res) => {
+        if (res === null) {
+          this.props.history.push("/404");
+          return;
+        }
+
+        if (res.status === "error") {
+          Setting.showMessage("error", res.msg);
+          return;
+        }
+
         this.setState({
-          syncer: syncer,
+          syncer: res,
         });
       });
   }
@@ -80,6 +90,97 @@ class SyncerEditPage extends React.Component {
     });
   }
 
+  getSyncerTableColumns(syncer) {
+    switch (syncer.type) {
+    case "Keycloak":
+      return [
+        {
+          "name": "ID",
+          "type": "string",
+          "casdoorName": "Id",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "USERNAME",
+          "type": "string",
+          "casdoorName": "Name",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "LAST_NAME+FIRST_NAME",
+          "type": "string",
+          "casdoorName": "DisplayName",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "EMAIL",
+          "type": "string",
+          "casdoorName": "Email",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "EMAIL_VERIFIED",
+          "type": "boolean",
+          "casdoorName": "EmailVerified",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "FIRST_NAME",
+          "type": "string",
+          "casdoorName": "FirstName",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "LAST_NAME",
+          "type": "string",
+          "casdoorName": "LastName",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "CREATED_TIMESTAMP",
+          "type": "string",
+          "casdoorName": "CreatedTime",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+        {
+          "name": "ENABLED",
+          "type": "boolean",
+          "casdoorName": "IsForbidden",
+          "isHashed": true,
+          "values": [
+
+          ],
+        },
+      ];
+    default:
+      return [];
+    }
+  }
+
   renderSyncer() {
     return (
       <Card size="small" title={
@@ -95,7 +196,7 @@ class SyncerEditPage extends React.Component {
             {Setting.getLabel(i18next.t("general:Organization"), i18next.t("general:Organization - Tooltip"))} :
           </Col>
           <Col span={22} >
-            <Select virtual={false} style={{width: "100%"}} value={this.state.syncer.organization} onChange={(value => {this.updateSyncerField("organization", value);})}>
+            <Select virtual={false} style={{width: "100%"}} disabled={!Setting.isAdminUser(this.props.account)} value={this.state.syncer.organization} onChange={(value => {this.updateSyncerField("organization", value);})}>
               {
                 this.state.organizations.map((organization, index) => <Option key={index} value={organization.name}>{organization.name}</Option>)
               }
@@ -120,7 +221,7 @@ class SyncerEditPage extends React.Component {
             <Select virtual={false} style={{width: "100%"}} value={this.state.syncer.type} onChange={(value => {
               this.updateSyncerField("type", value);
               const syncer = this.state.syncer;
-              syncer["tableColumns"] = Setting.getSyncerTableColumns(this.state.syncer);
+              syncer["tableColumns"] = this.getSyncerTableColumns(this.state.syncer);
               syncer.table = (value === "Keycloak") ? "user_entity" : this.state.syncer.table;
               this.setState({
                 syncer: syncer,
@@ -282,6 +383,16 @@ class SyncerEditPage extends React.Component {
         </Row>
         <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
+            {Setting.getLabel(i18next.t("syncer:Is read-only"), i18next.t("syncer:Is read-only - Tooltip"))} :
+          </Col>
+          <Col span={1} >
+            <Switch checked={this.state.syncer.isReadOnly} onChange={checked => {
+              this.updateSyncerField("isReadOnly", checked);
+            }} />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
             {Setting.getLabel(i18next.t("general:Is enabled"), i18next.t("general:Is enabled - Tooltip"))} :
           </Col>
           <Col span={1} >
@@ -298,8 +409,8 @@ class SyncerEditPage extends React.Component {
     const syncer = Setting.deepCopy(this.state.syncer);
     SyncerBackend.updateSyncer(this.state.syncer.owner, this.state.syncerName, syncer)
       .then((res) => {
-        if (res.msg === "") {
-          Setting.showMessage("success", "Successfully saved");
+        if (res.status === "ok") {
+          Setting.showMessage("success", i18next.t("general:Successfully saved"));
           this.setState({
             syncerName: this.state.syncer.name,
           });
@@ -310,22 +421,26 @@ class SyncerEditPage extends React.Component {
             this.props.history.push(`/syncers/${this.state.syncer.name}`);
           }
         } else {
-          Setting.showMessage("error", res.msg);
+          Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
           this.updateSyncerField("name", this.state.syncerName);
         }
       })
       .catch(error => {
-        Setting.showMessage("error", `Failed to connect to server: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 
   deleteSyncer() {
     SyncerBackend.deleteSyncer(this.state.syncer)
-      .then(() => {
-        this.props.history.push("/syncers");
+      .then((res) => {
+        if (res.status === "ok") {
+          this.props.history.push("/syncers");
+        } else {
+          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
+        }
       })
       .catch(error => {
-        Setting.showMessage("error", `Syncer failed to delete: ${error}`);
+        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
       });
   }
 

@@ -18,6 +18,9 @@ export function registerWebauthnCredential() {
   return fetch(`${Setting.ServerUrl}/api/webauthn/signup/begin`, {
     method: "GET",
     credentials: "include",
+    headers: {
+      "Accept-Language": Setting.getAcceptLanguage(),
+    },
   })
     .then(res => res.json())
     .then((credentialCreationOptions) => {
@@ -62,11 +65,18 @@ export function deleteUserWebAuthnCredential(credentialID) {
     credentials: "include",
     body: form,
     dataType: "text",
+    headers: {
+      "Accept-Language": Setting.getAcceptLanguage(),
+    },
   }).then(res => res.json());
 }
 
-// Base64 to ArrayBuffer
+// Base64URL to ArrayBuffer
 export function webAuthnBufferDecode(value) {
+  value = value.replace(/-/g, "+").replace(/_/g, "/");
+  while (value.length % 4) {
+    value += "=";
+  }
   return Uint8Array.from(atob(value), c => c.charCodeAt(0));
 }
 

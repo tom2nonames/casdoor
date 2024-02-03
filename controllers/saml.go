@@ -23,9 +23,14 @@ import (
 func (c *ApiController) GetSamlMeta() {
 	host := c.Ctx.Request.Host
 	paramApp := c.Input().Get("application")
-	application := object.GetApplication(paramApp)
+	application, err := object.GetApplication(paramApp)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
 	if application == nil {
-		c.ResponseError(fmt.Sprintf("err: application %s not found", paramApp))
+		c.ResponseError(fmt.Sprintf(c.T("saml:Application %s not found"), paramApp))
 		return
 	}
 	metadata, _ := object.GetSamlMeta(application, host)

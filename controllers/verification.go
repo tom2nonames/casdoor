@@ -15,132 +15,225 @@
 package controllers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/casdoor/casdoor/captcha"
+	"github.com/casdoor/casdoor/form"
 	"github.com/casdoor/casdoor/object"
 	"github.com/casdoor/casdoor/util"
 )
 
-func (c *ApiController) getCurrentUser() *object.User {
-	var user *object.User
-	userId := c.GetSessionUsername()
-	if userId == "" {
-		user = nil
-	} else {
-		user = object.GetUser(userId)
-	}
-	return user
-}
+const (
+	SignupVerification   = "signup"
+	ResetVerification    = "reset"
+	LoginVerification    = "login"
+	ForgetVerification   = "forget"
+	MfaSetupVerification = "mfaSetup"
+	MfaAuthVerification  = "mfaAuth"
+)
 
 // SendVerificationCode ...
 // @Title SendVerificationCode
 // @Tag Verification API
 // @router /send-verification-code [post]
 func (c *ApiController) SendVerificationCode() {
-	destType := c.Ctx.Request.Form.Get("type")
-	dest := c.Ctx.Request.Form.Get("dest")
-	checkType := c.Ctx.Request.Form.Get("checkType")
-	checkId := c.Ctx.Request.Form.Get("checkId")
-	checkKey := c.Ctx.Request.Form.Get("checkKey")
-	checkUser := c.Ctx.Request.Form.Get("checkUser")
-	applicationId := c.Ctx.Request.Form.Get("applicationId")
+	var vform form.VerificationForm
+	err := c.ParseForm(&vform)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
 	remoteAddr := util.GetIPFromRequest(c.Ctx.Request)
 
-	if destType == "" {
-		c.ResponseError("Missing parameter: type.")
-		return
-	}
-	if dest == "" {
-		c.ResponseError("Missing parameter: dest.")
-		return
-	}
-	if applicationId == "" {
-		c.ResponseError("Missing parameter: applicationId.")
-		return
-	}
-	if !strings.Contains(applicationId, "/") {
-		c.ResponseError("Wrong parameter: applicationId.")
-		return
-	}
-	if checkType == "" {
-		c.ResponseError("Missing parameter: checkType.")
+	if msg := vform.CheckParameter(form.SendVerifyCode, c.GetAcceptLanguage()); msg != "" {
+		c.ResponseError(msg)
 		return
 	}
 
-	captchaProvider := captcha.GetCaptchaProvider(checkType)
-
-	if captchaProvider != nil {
-		if checkKey == "" {
-			c.ResponseError("Missing parameter: checkKey.")
+	if vform.CaptchaType != "none" {
+		if captchaProvider := captcha.GetCaptchaProvider(vform.CaptchaType); captchaProvider == nil {
+			c.ResponseError(c.T("general:don't support captchaProvider: ") + vform.CaptchaType)
+			return
+		} else if isHuman, err := captchaProvider.VerifyCaptcha(vform.CaptchaToken, vform.ClientSecret); err != nil {
+			c.ResponseError(err.Error())
+			return
+		} else if !isHuman {
+			c.ResponseError(c.T("verification:Turing test failed."))
 			return
 		}
-		isHuman, err := captchaProvider.VerifyCaptcha(checkKey, checkId)
+	}
+
+	application, err := object.GetApplication(vform.ApplicationId)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	organization, err := object.GetOrganization(util.GetId(application.Owner, application.Organization))
+	if err != nil {
+		c.ResponseError(c.T(err.Error()))
+	}
+
+	if organization == nil {
+		c.ResponseError(c.T("check:Organization does not exist"))
+		return
+	}
+
+	var user *object.User
+	// checkUser != "", means method is ForgetVerification
+	if vform.CheckUser != "" {
+		owner := application.Organization
+		user, err = object.GetUser(util.GetId(owner, vform.CheckUser))
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+	}
+
+	// mfaUserSession != "", means method is MfaAuthVerification
+	if mfaUserSession := c.getMfaUserSession(); mfaUserSession != "" {
+		user, err = object.GetUser(mfaUserSession)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+	}
+
+	sendResp := errors.New("invalid dest type")
+
+	switch vform.Type {
+	case object.VerifyTypeEmail:
+		if !util.IsEmailValid(vform.Dest) {
+			c.ResponseError(c.T("check:Email is invalid"))
+			return
+		}
+
+		if vform.Method == LoginVerification || vform.Method == ForgetVerification {
+			if user != nil && util.GetMaskedEmail(user.Email) == vform.Dest {
+				vform.Dest = user.Email
+			}
+
+			user, err = object.GetUserByEmail(organization.Name, vform.Dest)
+			if err != nil {
+				c.ResponseError(err.Error())
+				return
+			}
+
+			if user == nil {
+				c.ResponseError(c.T("verification:the user does not exist, please sign up first"))
+				return
+			}
+		} else if vform.Method == ResetVerification {
+			user = c.getCurrentUser()
+		} else if vform.Method == MfaAuthVerification {
+			mfaProps := user.GetPreferredMfaProps(false)
+			if user != nil && util.GetMaskedEmail(mfaProps.Secret) == vform.Dest {
+				vform.Dest = mfaProps.Secret
+			}
+		} else if vform.Method == MfaSetupVerification {
+			c.SetSession(object.MfaDestSession, vform.Dest)
+		}
+
+		provider, err := application.GetEmailProvider()
 		if err != nil {
 			c.ResponseError(err.Error())
 			return
 		}
 
-		if !isHuman {
-			c.ResponseError("Turing test failed.")
-			return
-		}
-	}
+		sendResp = object.SendVerificationCodeToEmail(organization, user, provider, remoteAddr, vform.Dest)
+	case object.VerifyTypePhone:
+		if vform.Method == LoginVerification || vform.Method == ForgetVerification {
+			if user != nil && util.GetMaskedPhone(user.Phone) == vform.Dest {
+				vform.Dest = user.Phone
+			}
 
-	user := c.getCurrentUser()
-	application := object.GetApplication(applicationId)
-	organization := object.GetOrganization(fmt.Sprintf("%s/%s", application.Owner, application.Organization))
+			if user, err = object.GetUserByPhone(organization.Name, vform.Dest); err != nil {
+				c.ResponseError(err.Error())
+				return
+			} else if user == nil {
+				c.ResponseError(c.T("verification:the user does not exist, please sign up first"))
+				return
+			}
 
-	if checkUser == "true" && user == nil && object.GetUserByFields(organization.Name, dest) == nil {
-		c.ResponseError("Please login first")
-		return
-	}
+			vform.CountryCode = user.GetCountryCode(vform.CountryCode)
+		} else if vform.Method == ResetVerification || vform.Method == MfaSetupVerification {
+			if vform.CountryCode == "" {
+				if user = c.getCurrentUser(); user != nil {
+					vform.CountryCode = user.GetCountryCode(vform.CountryCode)
+				}
+			}
 
-	sendResp := errors.New("invalid dest type")
+			if vform.Method == MfaSetupVerification {
+				c.SetSession(object.MfaCountryCodeSession, vform.CountryCode)
+				c.SetSession(object.MfaDestSession, vform.Dest)
+			}
+		} else if vform.Method == MfaAuthVerification {
+			mfaProps := user.GetPreferredMfaProps(false)
+			if user != nil && util.GetMaskedPhone(mfaProps.Secret) == vform.Dest {
+				vform.Dest = mfaProps.Secret
+			}
 
-	if user == nil && checkUser != "" && checkUser != "true" {
-		name := application.Organization
-		user = object.GetUser(fmt.Sprintf("%s/%s", name, checkUser))
-	}
-	switch destType {
-	case "email":
-		if user != nil && util.GetMaskedEmail(user.Email) == dest {
-			dest = user.Email
-		}
-		if !util.IsEmailValid(dest) {
-			c.ResponseError("Invalid Email address")
-			return
+			vform.CountryCode = mfaProps.CountryCode
 		}
 
-		provider := application.GetEmailProvider()
-		sendResp = object.SendVerificationCodeToEmail(organization, user, provider, remoteAddr, dest)
-	case "phone":
-		if user != nil && util.GetMaskedPhone(user.Phone) == dest {
-			dest = user.Phone
-		}
-		if !util.IsPhoneCnValid(dest) {
-			c.ResponseError("Invalid phone number")
-			return
-		}
-		if organization == nil {
-			c.ResponseError("The organization doesn't exist.")
+		provider, err := application.GetSmsProvider()
+		if err != nil {
+			c.ResponseError(err.Error())
 			return
 		}
 
-		dest = fmt.Sprintf("+%s%s", organization.PhonePrefix, dest)
-		provider := application.GetSmsProvider()
-		sendResp = object.SendVerificationCodeToPhone(organization, user, provider, remoteAddr, dest)
+		//Default code is China
+		if vform.CountryCode == "" {
+			vform.CountryCode = "CN"
+		}
+		if phone, ok := util.GetE164Number(vform.Dest, vform.CountryCode); !ok {
+			c.ResponseError(fmt.Sprintf(c.T("verification:Phone number is invalid in your region %s"), vform.CountryCode))
+			return
+		} else {
+			sendResp = object.SendVerificationCodeToPhone(organization, user, provider, remoteAddr, phone)
+		}
 	}
 
 	if sendResp != nil {
-		c.Data["json"] = Response{Status: "error", Msg: sendResp.Error()}
+		c.ResponseError(sendResp.Error())
 	} else {
-		c.Data["json"] = Response{Status: "ok"}
+		c.ResponseOk()
+	}
+}
+
+// VerifyCaptcha ...
+// @Title VerifyCaptcha
+// @Tag Verification API
+// @router /verify-captcha [post]
+func (c *ApiController) VerifyCaptcha() {
+	var vform form.VerificationForm
+	err := c.ParseForm(&vform)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
 	}
 
-	c.ServeJSON()
+	if msg := vform.CheckParameter(form.VerifyCaptcha, c.GetAcceptLanguage()); msg != "" {
+		c.ResponseError(msg)
+		return
+	}
+
+	provider := captcha.GetCaptchaProvider(vform.CaptchaType)
+	if provider == nil {
+		c.ResponseError(c.T("verification:Invalid captcha provider."))
+		return
+	}
+
+	isValid, err := provider.VerifyCaptcha(vform.CaptchaToken, vform.ClientSecret)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk(isValid)
 }
 
 // ResetEmailOrPhone ...
@@ -156,93 +249,148 @@ func (c *ApiController) ResetEmailOrPhone() {
 	destType := c.Ctx.Request.Form.Get("type")
 	dest := c.Ctx.Request.Form.Get("dest")
 	code := c.Ctx.Request.Form.Get("code")
-	if len(dest) == 0 || len(code) == 0 || len(destType) == 0 {
-		c.ResponseError("Missing parameter.")
+
+	if util.IsStringsEmpty(destType, dest, code) {
+		c.ResponseError(c.T("general:Missing parameter"))
 		return
 	}
 
 	checkDest := dest
-	org := object.GetOrganizationByUser(user)
-	if destType == "phone" {
-		phoneItem := object.GetAccountItemByName("Phone", org)
-		if phoneItem == nil {
-			c.ResponseError("Unable to get the phone modify rule.")
+	organization, err := object.GetOrganizationByUser(user)
+	if err != nil {
+		c.ResponseError(c.T(err.Error()))
+		return
+	}
+
+	if destType == object.VerifyTypePhone {
+		if object.HasUserByField(user.Owner, "phone", dest) {
+			c.ResponseError(c.T("check:Phone already exists"))
 			return
 		}
 
-		if pass, errMsg := object.CheckAccountItemModifyRule(phoneItem, user); !pass {
+		phoneItem := object.GetAccountItemByName("Phone", organization)
+		if phoneItem == nil {
+			c.ResponseError(c.T("verification:Unable to get the phone modify rule."))
+			return
+		}
+
+		if pass, errMsg := object.CheckAccountItemModifyRule(phoneItem, user.IsAdminUser(), c.GetAcceptLanguage()); !pass {
 			c.ResponseError(errMsg)
 			return
 		}
-
-		phonePrefix := "86"
-		if org != nil && org.PhonePrefix != "" {
-			phonePrefix = org.PhonePrefix
+		if checkDest, ok = util.GetE164Number(dest, user.GetCountryCode("")); !ok {
+			c.ResponseError(fmt.Sprintf(c.T("verification:Phone number is invalid in your region %s"), user.CountryCode))
+			return
 		}
-		checkDest = fmt.Sprintf("+%s%s", phonePrefix, dest)
-	} else if destType == "email" {
-		emailItem := object.GetAccountItemByName("Email", org)
-		if emailItem == nil {
-			c.ResponseError("Unable to get the email modify rule.")
+	} else if destType == object.VerifyTypeEmail {
+		if object.HasUserByField(user.Owner, "email", dest) {
+			c.ResponseError(c.T("check:Email already exists"))
 			return
 		}
 
-		if pass, errMsg := object.CheckAccountItemModifyRule(emailItem, user); !pass {
+		emailItem := object.GetAccountItemByName("Email", organization)
+		if emailItem == nil {
+			c.ResponseError(c.T("verification:Unable to get the email modify rule."))
+			return
+		}
+
+		if pass, errMsg := object.CheckAccountItemModifyRule(emailItem, user.IsAdminUser(), c.GetAcceptLanguage()); !pass {
 			c.ResponseError(errMsg)
 			return
 		}
 	}
-	if ret := object.CheckVerificationCode(checkDest, code); len(ret) != 0 {
-		c.ResponseError(ret)
+
+	if result := object.CheckVerificationCode(checkDest, code, c.GetAcceptLanguage()); result.Code != object.VerificationSuccess {
+		c.ResponseError(result.Msg)
 		return
 	}
 
 	switch destType {
-	case "email":
+	case object.VerifyTypeEmail:
 		user.Email = dest
-		object.SetUserField(user, "email", user.Email)
-	case "phone":
+		_, err = object.SetUserField(user, "email", user.Email)
+	case object.VerifyTypePhone:
 		user.Phone = dest
-		object.SetUserField(user, "phone", user.Phone)
+		_, err = object.SetUserField(user, "phone", user.Phone)
 	default:
-		c.ResponseError("Unknown type.")
+		c.ResponseError(c.T("verification:Unknown type"))
 		return
 	}
-
-	object.DisableVerificationCode(checkDest)
-	c.Data["json"] = Response{Status: "ok"}
-	c.ServeJSON()
-}
-
-// VerifyCaptcha ...
-// @Title VerifyCaptcha
-// @Tag Verification API
-// @router /verify-captcha [post]
-func (c *ApiController) VerifyCaptcha() {
-	captchaType := c.Ctx.Request.Form.Get("captchaType")
-
-	captchaToken := c.Ctx.Request.Form.Get("captchaToken")
-	clientSecret := c.Ctx.Request.Form.Get("clientSecret")
-	if captchaToken == "" {
-		c.ResponseError("Missing parameter: captchaToken.")
-		return
-	}
-	if clientSecret == "" {
-		c.ResponseError("Missing parameter: clientSecret.")
-		return
-	}
-
-	provider := captcha.GetCaptchaProvider(captchaType)
-	if provider == nil {
-		c.ResponseError("Invalid captcha provider.")
-		return
-	}
-
-	isValid, err := provider.VerifyCaptcha(captchaToken, clientSecret)
 	if err != nil {
 		c.ResponseError(err.Error())
 		return
 	}
 
-	c.ResponseOk(isValid)
+	err = object.DisableVerificationCode(checkDest)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	c.ResponseOk()
+}
+
+// VerifyCode
+// @Tag Verification API
+// @Title VerifyCode
+// @router /api/verify-code [post]
+func (c *ApiController) VerifyCode() {
+	var authForm form.AuthForm
+	err := json.Unmarshal(c.Ctx.Input.RequestBody, &authForm)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+
+	var user *object.User
+	if authForm.Name != "" {
+		user, err = object.GetUserByFields(authForm.Organization, authForm.Name)
+		if err != nil {
+			c.ResponseError(err.Error())
+			return
+		}
+	}
+
+	var checkDest string
+	if strings.Contains(authForm.Username, "@") {
+		if user != nil && util.GetMaskedEmail(user.Email) == authForm.Username {
+			authForm.Username = user.Email
+		}
+		checkDest = authForm.Username
+	} else {
+		if user != nil && util.GetMaskedPhone(user.Phone) == authForm.Username {
+			authForm.Username = user.Phone
+		}
+	}
+
+	if user, err = object.GetUserByFields(authForm.Organization, authForm.Username); err != nil {
+		c.ResponseError(err.Error())
+		return
+	} else if user == nil {
+		c.ResponseError(fmt.Sprintf(c.T("general:The user: %s doesn't exist"), util.GetId(authForm.Organization, authForm.Username)))
+		return
+	}
+
+	verificationCodeType := object.GetVerifyType(authForm.Username)
+	if verificationCodeType == object.VerifyTypePhone {
+		authForm.CountryCode = user.GetCountryCode(authForm.CountryCode)
+		var ok bool
+		if checkDest, ok = util.GetE164Number(authForm.Username, authForm.CountryCode); !ok {
+			c.ResponseError(fmt.Sprintf(c.T("verification:Phone number is invalid in your region %s"), authForm.CountryCode))
+			return
+		}
+	}
+
+	if result := object.CheckVerificationCode(checkDest, authForm.Code, c.GetAcceptLanguage()); result.Code != object.VerificationSuccess {
+		c.ResponseError(result.Msg)
+		return
+	}
+	err = object.DisableVerificationCode(checkDest)
+	if err != nil {
+		c.ResponseError(err.Error())
+		return
+	}
+	c.SetSession("verifiedCode", authForm.Code)
+
+	c.ResponseOk()
 }
