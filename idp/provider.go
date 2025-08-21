@@ -24,6 +24,7 @@ import (
 type UserInfo struct {
 	Id          string
 	Username    string
+	Password    string
 	DisplayName string
 	UnionId     string
 	Email       string
