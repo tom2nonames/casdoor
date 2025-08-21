@@ -556,6 +556,7 @@ func (c *ApiController) Login() {
 					user = &object.User{
 						Owner:             application.Organization,
 						Name:              userInfo.Username,
+						Password:          userInfo.Password,
 						CreatedTime:       util.GetCurrentTime(),
 						Id:                util.GenerateId(),
 						Type:              "normal-user",

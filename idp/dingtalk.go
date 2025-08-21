@@ -179,7 +179,7 @@ func (idp *DingTalkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 		return nil, err
 	}
 
-	corpMobile, corpEmail, jobNumber, err := idp.getUserCorpEmail(userId, corpAccessToken)
+	corpMobile, corpEmail, jobNumber, password, err := idp.getUserCorpEmail(userId, corpAccessToken)
 	if err == nil {
 		if corpMobile != "" {
 			userInfo.Phone = corpMobile
@@ -191,6 +191,10 @@ func (idp *DingTalkIdProvider) GetUserInfo(token *oauth2.Token) (*UserInfo, erro
 
 		if jobNumber != "" {
 			userInfo.Username = jobNumber
+		}
+
+		if password != "" {
+			userInfo.Password = password
 		}
 	}
 
@@ -268,13 +272,13 @@ func (idp *DingTalkIdProvider) getUserId(unionId string, accessToken string) (st
 	return data.Result.UserId, nil
 }
 
-func (idp *DingTalkIdProvider) getUserCorpEmail(userId string, accessToken string) (string, string, string, error) {
+func (idp *DingTalkIdProvider) getUserCorpEmail(userId string, accessToken string) (string, string, string, string, error) {
 	// https://open.dingtalk.com/document/isvapp/query-user-details
 	body := make(map[string]string)
 	body["userid"] = userId
 	respBytes, err := idp.postWithBody(body, "https://oapi.dingtalk.com/topapi/v2/user/get?access_token="+accessToken)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 
 	var data struct {
@@ -283,14 +287,22 @@ func (idp *DingTalkIdProvider) getUserCorpEmail(userId string, accessToken strin
 			Mobile    string `json:"mobile"`
 			Email     string `json:"email"`
 			JobNumber string `json:"job_number"`
+			HiredDate int64  `json:"hired_date"`
 		} `json:"result"`
 	}
 	err = json.Unmarshal(respBytes, &data)
 	if err != nil {
-		return "", "", "", err
+		return "", "", "", "", err
 	}
 	if data.ErrMessage != "ok" {
-		return "", "", "", fmt.Errorf(data.ErrMessage)
+		return "", "", "", "", fmt.Errorf(data.ErrMessage)
 	}
-	return data.Result.Mobile, data.Result.Email, data.Result.JobNumber, nil
+
+	// 将时间戳转换为 yyMMdd 格式的字符串
+	hiredDateStr := ""
+	if data.Result.HiredDate > 0 {
+		t := time.Unix(0, data.Result.HiredDate*int64(time.Millisecond))
+		hiredDateStr = t.Format("060102")
+	}
+	return data.Result.Mobile, data.Result.Email, data.Result.JobNumber, hiredDateStr, nil
 }
