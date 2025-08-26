@@ -156,7 +156,7 @@ class MessageEditPage extends React.Component {
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.message.author} onChange={(value => {this.updateMessageField("author", value);})}
-              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`))
+              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}/${user.displayName}`, `${user.owner}/${user.name}`))
               } />
           </Col>
         </Row>

@@ -265,7 +265,7 @@ class PermissionEditPage extends React.Component {
           <Col span={22} >
             <Select virtual={false} mode="multiple" style={{width: "100%"}} value={this.state.permission.users}
               onChange={(value => {this.updatePermissionField("users", value);})}
-              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`))}
+              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}/${user.displayName}`, `${user.owner}/${user.name}`))}
             />
           </Col>
         </Row>
