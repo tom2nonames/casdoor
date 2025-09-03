@@ -195,7 +195,7 @@ class SubscriptionEditPage extends React.Component {
           <Col span={22} >
             <Select style={{width: "100%"}} value={this.state.subscription.user}
               onChange={(value => {this.updateSubscriptionField("user", value);})}
-              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`))}
+              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}/${user.displayName}`, `${user.owner}/${user.name}`))}
             />
           </Col>
         </Row>

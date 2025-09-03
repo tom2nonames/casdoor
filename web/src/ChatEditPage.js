@@ -170,7 +170,7 @@ class ChatEditPage extends React.Component {
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.chat.user1} onChange={(value => {this.updateChatField("user1", value);})}
-              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`))
+              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}/${user.displayName}`, `${user.owner}/${user.name}`))
               } />
           </Col>
         </Row>
@@ -180,7 +180,7 @@ class ChatEditPage extends React.Component {
           </Col>
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.chat.user2} onChange={(value => {this.updateChatField("user2", value);})}
-              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`))
+              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}/${user.displayName}`, `${user.owner}/${user.name}`))
               } />
           </Col>
         </Row>
@@ -191,7 +191,7 @@ class ChatEditPage extends React.Component {
           <Col span={22} >
             <Select virtual={false} mode="multiple" style={{width: "100%"}} value={this.state.chat.users}
               onChange={(value => {this.updateChatField("users", value);})}
-              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}`, `${user.owner}/${user.name}`))}
+              options={this.state.users.map((user) => Setting.getOption(`${user.owner}/${user.name}/${user.displayName}`, `${user.owner}/${user.name}`))}
             />
           </Col>
         </Row>
