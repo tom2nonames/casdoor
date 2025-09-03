@@ -20,6 +20,7 @@ import (
 
 	"github.com/beego/beego"
 	"github.com/beego/beego/logs"
+	"github.com/beego/beego/plugins/cors"
 	_ "github.com/beego/beego/session/redis"
 	"github.com/casdoor/casdoor/authz"
 	"github.com/casdoor/casdoor/conf"
@@ -65,6 +66,19 @@ func main() {
 	beego.InsertFilter("*", beego.BeforeRouter, routers.AuthzFilter)
 	beego.InsertFilter("*", beego.BeforeRouter, routers.PrometheusFilter)
 	beego.InsertFilter("*", beego.BeforeRouter, routers.RecordMessage)
+	// 配置允许跨域访问的域名
+	beego.InsertFilter("*", beego.BeforeRouter, cors.Allow(&cors.Options{
+		// 指定允许跨域请求的域名，注意端口也算不同域名
+		AllowOrigins: []string{"http://localhost:8000"},
+		// 允许的 HTTP 方法
+		AllowMethods: []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		// 允许的请求头字段
+		AllowHeaders: []string{"Origin", "Authorization", "Content-Type"},
+		// 暴露给客户端的响应头字段
+		ExposeHeaders: []string{"Content-Length"},
+		// 是否允许客户端发送 Cookie 等认证信息
+		AllowCredentials: true,
+	}))
 
 	beego.BConfig.WebConfig.Session.SessionOn = true
 	beego.BConfig.WebConfig.Session.SessionName = "casdoor_session_id"
